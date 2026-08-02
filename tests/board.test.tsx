@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/components/ui/toast";
 
@@ -51,6 +51,10 @@ function renderBoard(initial: BoardApplication[]) {
       <ApplicationBoard initial={initial} today={TODAY} />
     </ToastProvider>,
   );
+}
+
+function acmeSelect() {
+  return screen.getByRole("combobox", { name: /Status for Acme/ });
 }
 
 describe("ApplicationBoard", () => {
@@ -243,12 +247,18 @@ describe("ApplicationBoard", () => {
       const user = userEvent.setup();
       renderBoard([app({ id: "a" })]);
 
-      const select = screen.getByRole("combobox", { name: /Status for Acme/ });
-      await user.selectOptions(select, "interview");
-      await user.selectOptions(select, "offer").catch(() => undefined);
+      await user.selectOptions(acmeSelect(), "interview");
+      await waitFor(() => expect(acmeSelect()).toBeDisabled());
+      const handle = screen.getByRole("button", { name: "Move Acme — Intern" });
+      expect(handle).toBeDisabled();
+
+      await user.selectOptions(acmeSelect(), "offer").catch(() => undefined);
 
       expect(updateApplicationStatus).toHaveBeenCalledTimes(1);
-      pending.resolve({ ok: true });
+      await act(async () => {
+        pending.resolve({ ok: true });
+      });
+      await waitFor(() => expect(acmeSelect()).toBeEnabled());
     });
 
     it("synchronizes with new initial props when nothing is pending", async () => {
@@ -270,9 +280,9 @@ describe("ApplicationBoard", () => {
       const user = userEvent.setup();
       const { rerender } = renderBoard([app({ id: "a" })]);
 
-      await user.selectOptions(
-        screen.getByRole("combobox", { name: /Status for Acme/ }),
-        "interview",
+      await user.selectOptions(acmeSelect(), "interview");
+      await waitFor(() =>
+        expect(within(column("Interview")).getByText("Acme")).toBeInTheDocument(),
       );
       // Server payload arrives with the old status while the mutation is in flight.
       rerender(
@@ -281,7 +291,10 @@ describe("ApplicationBoard", () => {
         </ToastProvider>,
       );
       expect(within(column("Interview")).getByText("Acme")).toBeInTheDocument();
-      pending.resolve({ ok: true });
+      await act(async () => {
+        pending.resolve({ ok: true });
+      });
+      await waitFor(() => expect(acmeSelect()).toBeEnabled());
     });
 
     it("re-sorts by updated_at DESC then id ASC after a successful refresh payload", async () => {
@@ -432,15 +445,13 @@ describe("ApplicationBoard", () => {
     it("cancels without calling the server action", async () => {
       const user = userEvent.setup();
       renderBoard([app({ id: "a" })]);
-      await user.selectOptions(
-        screen.getByRole("combobox", { name: /Status for Acme/ }),
-        "applied",
-      );
+      await user.selectOptions(acmeSelect(), "applied");
       await screen.findByRole("dialog");
       await user.click(screen.getByRole("button", { name: "Cancel" }));
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
       expect(updateApplicationStatus).not.toHaveBeenCalled();
       expect(within(column("Saved")).getByText("Acme")).toBeInTheDocument();
+      await waitFor(() => expect(acmeSelect()).toHaveFocus());
     });
 
     it("does not prompt again when a date already exists", async () => {
@@ -454,6 +465,93 @@ describe("ApplicationBoard", () => {
         expect(updateApplicationStatus).toHaveBeenCalledWith("a", "applied", null),
       );
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("restores focus after a slow Save completes (no fixed timeout)", async () => {
+      const pending = deferred();
+      updateApplicationStatus.mockReturnValue(pending.promise);
+      const user = userEvent.setup();
+      renderBoard([app({ id: "a" })]);
+
+      await user.selectOptions(acmeSelect(), "applied");
+      const input = await screen.findByLabelText("Date applied");
+      fireEvent.change(input, { target: { value: "2026-08-02" } });
+      await user.click(screen.getByRole("button", { name: "Save date" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      await waitFor(() => expect(acmeSelect()).toBeDisabled());
+      // While pending, focus must not land on the disabled selector.
+      expect(document.activeElement).not.toBe(acmeSelect());
+
+      // Let more time pass than the old 120ms assumption; still pending.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(updateApplicationStatus).toHaveBeenCalledTimes(1);
+      expect(acmeSelect()).toBeDisabled();
+
+      await act(async () => {
+        pending.resolve({ ok: true });
+      });
+      await waitFor(() => expect(acmeSelect()).toBeEnabled());
+      await waitFor(() => expect(acmeSelect()).toHaveFocus());
+    });
+
+    it("restores focus after a slow Skip completes", async () => {
+      const pending = deferred();
+      updateApplicationStatus.mockReturnValue(pending.promise);
+      const user = userEvent.setup();
+      renderBoard([app({ id: "a" })]);
+
+      await user.selectOptions(acmeSelect(), "applied");
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: "Skip" }));
+
+      await waitFor(() => expect(acmeSelect()).toBeDisabled());
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await act(async () => {
+        pending.resolve({ ok: true });
+      });
+      await waitFor(() => expect(acmeSelect()).toBeEnabled());
+      await waitFor(() => expect(acmeSelect()).toHaveFocus());
+    });
+
+    it("restores focus after a failed mutation rolls back", async () => {
+      const pending = deferred();
+      updateApplicationStatus.mockReturnValue(pending.promise);
+      const user = userEvent.setup();
+      renderBoard([app({ id: "a" })]);
+
+      await user.selectOptions(acmeSelect(), "applied");
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: "Skip" }));
+
+      await waitFor(() => expect(acmeSelect()).toBeDisabled());
+      await act(async () => {
+        pending.resolve({ ok: false, error: "Boom" });
+      });
+      await waitFor(() => expect(within(column("Saved")).getByText("Acme")).toBeInTheDocument());
+      await waitFor(() => expect(acmeSelect()).toBeEnabled());
+      await waitFor(() => expect(acmeSelect()).toHaveFocus());
+    });
+
+    it("restores focus only to the originating card with concurrent cards", async () => {
+      const pendingA = deferred();
+      updateApplicationStatus.mockImplementation((id: string) =>
+        id === "a" ? pendingA.promise : Promise.resolve({ ok: true }),
+      );
+      const user = userEvent.setup();
+      renderBoard([app({ id: "a", company: "Alpha" }), app({ id: "b", company: "Beta" })]);
+
+      const alphaSelect = () => screen.getByRole("combobox", { name: /Status for Alpha/ });
+      await user.selectOptions(alphaSelect(), "applied");
+      await screen.findByRole("dialog");
+      await user.click(screen.getByRole("button", { name: "Skip" }));
+
+      await waitFor(() => expect(alphaSelect()).toBeDisabled());
+      await act(async () => {
+        pendingA.resolve({ ok: true });
+      });
+      await waitFor(() => expect(alphaSelect()).toHaveFocus());
+      expect(screen.getByRole("combobox", { name: /Status for Beta/ })).not.toHaveFocus();
     });
   });
 });

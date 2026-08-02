@@ -93,6 +93,8 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
   const pendingRef = useRef<Set<string>>(new Set());
   const [datePrompt, setDatePrompt] = useState<BoardApplication | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
+  const [pendingFocusRestoreId, setPendingFocusRestoreId] = useState<string | null>(null);
+  const pendingFocusRestoreIdRef = useRef<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -110,6 +112,46 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     });
   }, [initial]);
 
+  // Mutation-lifecycle focus restore: once the target application leaves the
+  // pending set, its selector is enabled again; only then restore focus.
+  useEffect(() => {
+    const restoreId = pendingFocusRestoreIdRef.current;
+    if (!restoreId) return;
+    if (pendingIds.has(restoreId)) return;
+
+    const attempt = () => {
+      const select = document.querySelector<HTMLSelectElement>(
+        `select[data-app-id="${restoreId}"]`,
+      );
+      if (!select) {
+        // Target record is gone; safely abandon the restore.
+        pendingFocusRestoreIdRef.current = null;
+        setPendingFocusRestoreId(null);
+        return;
+      }
+      if (!select.disabled) {
+        select.focus();
+        pendingFocusRestoreIdRef.current = null;
+        setPendingFocusRestoreId(null);
+        return;
+      }
+      // Selector is still disabled (DOM not yet reflecting the pending
+      // removal); one rAF retry only - never a polling loop.
+      requestAnimationFrame(() => {
+        const again = document.querySelector<HTMLSelectElement>(
+          `select[data-app-id="${restoreId}"]`,
+        );
+        if (again && !again.disabled) {
+          again.focus();
+        }
+        pendingFocusRestoreIdRef.current = null;
+        setPendingFocusRestoreId(null);
+      });
+    };
+
+    requestAnimationFrame(attempt);
+  }, [pendingIds, pendingFocusRestoreId]);
+
   const grouped = useMemo(() => {
     const groups = new Map<ApplicationStatus, BoardApplication[]>();
     for (const status of APPLICATION_STATUSES) {
@@ -121,14 +163,10 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     return groups;
   }, [apps]);
 
-  function focusAppSelect(appId: string) {
-    const focus = () => {
+  function focusAppSelectImmediately(appId: string) {
+    requestAnimationFrame(() => {
       document.querySelector<HTMLSelectElement>(`select[data-app-id="${appId}"]`)?.focus();
-    };
-    // First attempt after the optimistic render, then again once the server
-    // refresh has replaced the payload (which can rebuild the select node).
-    requestAnimationFrame(focus);
-    window.setTimeout(focus, 120);
+    });
   }
 
   async function performStatusChange(
@@ -194,11 +232,18 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     requestStatusChange(app, columnId as ApplicationStatus);
   }
 
-  function closeDatePrompt() {
+  function closeDatePrompt(cancelOnly = false) {
     if (datePrompt) {
       const appId = datePrompt.id;
       setDatePrompt(null);
-      focusAppSelect(appId);
+      if (cancelOnly) {
+        // No mutation ran; restore focus immediately after the dialog closes.
+        focusAppSelectImmediately(appId);
+      } else {
+        // Save/Skip: restore focus only after the mutation lifecycle finishes.
+        pendingFocusRestoreIdRef.current = appId;
+        setPendingFocusRestoreId(appId);
+      }
     }
   }
 
@@ -230,15 +275,15 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
           if (!datePrompt) return;
           const appId = datePrompt.id;
           void performStatusChange(appId, "applied", date);
-          closeDatePrompt();
+          closeDatePrompt(false);
         }}
         onSkip={() => {
           if (!datePrompt) return;
           const appId = datePrompt.id;
           void performStatusChange(appId, "applied", null);
-          closeDatePrompt();
+          closeDatePrompt(false);
         }}
-        onCancel={closeDatePrompt}
+        onCancel={() => closeDatePrompt(true)}
       />
     </div>
   );
