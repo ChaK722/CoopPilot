@@ -99,6 +99,87 @@ async function main() {
   }
   console.log(`Demo profile ${existingProfile ? "updated" : "created"}.`);
 
+  const education = await admin.from("educations").upsert(
+    {
+      id: "a0000000-0000-4000-8000-000000000001",
+      user_id: userId,
+      school: "University of Waterloo",
+      degree: "Bachelor of Computer Science",
+      program: "Computer Science (Co-op)",
+      start_date: "2022-09-01",
+      expected_graduation_date: "2027-04-30",
+      relevant_coursework: ["Data Structures & Algorithms", "Databases", "Operating Systems"],
+      sort_order: 0,
+    },
+    { onConflict: "id" },
+  );
+  if (education.error) throw new Error(`Could not seed education: ${education.error.message}`);
+
+  const demoSkills = [
+    ["programming_languages", "TypeScript", "typescript"],
+    ["programming_languages", "Python", "python"],
+    ["frameworks", "React", "react"],
+    ["frameworks", "Next.js", "next.js"],
+    ["cloud_platforms", "AWS", "aws"],
+    ["tools", "Git", "git"],
+    ["tools", "PostgreSQL", "postgresql"],
+    ["concepts", "REST APIs", "rest apis"],
+    ["concepts", "Data Structures & Algorithms", "data structures & algorithms"],
+    ["spoken_languages", "English", "english"],
+    ["spoken_languages", "Mandarin", "mandarin"],
+  ];
+  const skillsError = await admin.from("profile_skills").upsert(
+    demoSkills.map(([category, name, normalized_name], index) => ({
+      id: `a0000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      user_id: userId,
+      category,
+      name,
+      normalized_name,
+    })),
+    { onConflict: "id" },
+  );
+  if (skillsError.error) throw new Error(`Could not seed skills: ${skillsError.error.message}`);
+
+  const experience = await admin.from("experiences").upsert(
+    {
+      id: "a0000000-0000-4000-8000-000000000002",
+      user_id: userId,
+      title: "Software Developer Intern",
+      organization: "Demo Corp",
+      location: "Remote",
+      start_date: "2025-01-06",
+      end_date: "2025-04-25",
+      description: "Worked on web application features end-to-end.",
+      bullet_points: [
+        "Built a REST API used by 2,000+ users",
+        "Shipped responsive UI improvements with React",
+      ],
+      sort_order: 0,
+    },
+    { onConflict: "id" },
+  );
+  if (experience.error) throw new Error(`Could not seed experience: ${experience.error.message}`);
+
+  const project = await admin.from("projects").upsert(
+    {
+      id: "a0000000-0000-4000-8000-000000000003",
+      user_id: userId,
+      name: "CoopPilot",
+      technologies: ["Next.js", "TypeScript", "Supabase"],
+      start_date: "2026-05-01",
+      end_date: null,
+      description: "Personal job application companion.",
+      bullet_points: ["Full RLS-backed multi-user data isolation"],
+      github_url: "https://github.com/ChaK722/CoopPilot",
+      demo_url: null,
+      sort_order: 0,
+    },
+    { onConflict: "id" },
+  );
+  if (project.error) throw new Error(`Could not seed project: ${project.error.message}`);
+
+  console.log("Demo education, skills, experience, and projects written.");
+
   console.log("Seed complete. Log in with:");
   console.log(`  email:    ${demoEmail}`);
   console.log("  password: <SEED_DEMO_PASSWORD value>");

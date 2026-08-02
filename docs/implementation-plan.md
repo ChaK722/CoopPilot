@@ -180,6 +180,56 @@ Acceptance criteria:
 
 Phase 2 exit criterion: every profile field required by the PRD is editable, validated, owned by the current user, and persistent.
 
+### Phase 2 verified status — 2026-08-02
+
+Status: **COMPLETE — implemented and verified** (all Phase 2 acceptance
+criteria pass; Phase 3 has not been started).
+
+Implemented:
+
+- 2A: Onboarding (`/onboarding`) and Profile (`/profile`) forms for basic
+  information (preferred name, phone, location, LinkedIn/GitHub/website URLs)
+  and preferences (locations, remote preference, term lengths, target roles,
+  available start date). Only `preferred_name` is required (O-13 resolved);
+  empty or whitespace-only names are rejected on both client and server.
+  Education list CRUD with keyboard-accessible reordering, shared URL/date
+  validation, and explicit save state with success/error toasts.
+- 2B: Skills editor with the six required categories, normalization and
+  deduplication by normalized name per category (TagInput adds via Enter;
+  per-tag remove buttons are keyboard-usable; category headings are
+  programmatically associated with their controls via labels).
+- 2C: Experience and Project CRUD with dynamic bullet points, project
+  technologies and GitHub/Demo URLs, end-date >= start-date validation on
+  client and server, and focus-managed confirmation dialogs for deletion.
+- Database: `educations`, `profile_skills`, `experiences`, and `projects`
+  tables with RLS policies for select/insert/update/delete, `updated_at`
+  triggers, CHECK constraints, indexes, and a security-definer
+  `replace_profile_skills` RPC that verifies `auth.uid()` before replacing a
+  user's skill set.
+- Seed: demo account now includes one education, eleven skills across
+  categories, one experience, and one project; the seed remains repeatable
+  and idempotent (fixed record ids).
+
+Verification evidence:
+
+- `npm run verify` passes: TypeScript, ESLint, Prettier, and 42 tests.
+- `npm run build` produces a clean production build.
+- New automated tests: schema validation (URL protocol, date order, name
+  trimming), component tests (client-side onboarding blocking, skill
+  keyboard add/dedupe), service tests (ownership scoping, not-found
+  behaviour, skill deduplication, onboarding flag, safe database errors),
+  and RLS integration tests against a real embedded PostgreSQL proving
+  two-user isolation for all four new tables plus RPC ownership checks.
+- Live verification against the local stack: migrations applied, seed run
+  twice (idempotent), `/profile` and `/onboarding` render with the demo
+  user's persisted records, and records survive a fresh sign-in.
+
+Known limitations (deferred by plan): visual browser pass at 375px/tablet/
+desktop and automated accessibility checks remain part of the Phase 7 audit;
+ordering is via move-up/move-down buttons rather than drag-and-drop.
+
+Phase 3 has not been started. No out-of-scope feature was added.
+
 ## 4. Phase 3 — Job management
 
 ### 3A. Job analysis contract, Demo extraction, and manual fallback

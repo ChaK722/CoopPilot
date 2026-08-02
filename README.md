@@ -5,10 +5,13 @@ job seekers: profile management, job extraction, application tracking, AI
 match analysis, cover letters, interview preparation, and analytics — all
 usable without an external AI API key (Demo Mode).
 
-> Status: **Phase 1 (Foundation) implemented.** Public pages, protected
+> Status: **Phases 1–2 implemented.** Phase 1: public pages, protected
 > application shell, Supabase authentication, RLS-protected profile baseline,
-> and a repeatable demo seed. Later phases (profile, applications, AI,
-> analytics, deployment) are tracked in `docs/implementation-plan.md`.
+> repeatable demo seed. Phase 2: complete user profile — basic information,
+> job preferences, education, skills (six categories with deduplication),
+> work experience, and projects, all persisted in PostgreSQL with RLS and
+> server-side validation. Later phases (applications, AI, analytics,
+> deployment) are tracked in `docs/implementation-plan.md`.
 
 ## Prerequisites
 
@@ -69,7 +72,18 @@ npm run build       # production build
 
 The RLS integration tests boot a real embedded PostgreSQL, apply the
 committed migrations, create two users, and prove that neither can read,
-update, or delete the other's profile at the database layer.
+update, or delete the other's profile, education, skills, experience, or
+projects at the database layer.
+
+## Profile workflow
+
+- `/onboarding` — basic information and job preferences; only `preferred
+name` is required. Completing onboarding is never required to add or
+  manage job applications.
+- `/profile` — full profile editor: basic information, preferences,
+  education, skills (Enter to add, × to remove), work experience, and
+  projects. Reorder lists with the up/down buttons; deletions require
+  confirmation.
 
 ## Project layout
 
