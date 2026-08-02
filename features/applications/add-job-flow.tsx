@@ -57,7 +57,7 @@ export function AddJobFlow() {
     }
 
     setAnalyzing(true);
-    const result = await analyzeJob({ description, url });
+    const result = await analyzeJob({ description, url }, crypto.randomUUID());
     setAnalyzing(false);
 
     if (!result.ok) {

@@ -10,7 +10,7 @@ const serviceSpies = {
   deleteInterview: vi.fn().mockResolvedValue({ id: "i-1", application_id: "app-1" }),
 };
 
-const extractJob = vi.fn().mockResolvedValue({
+const aiAnalyzeJob = vi.fn().mockResolvedValue({
   company: "Acme",
   job_title: "Intern",
   location: null,
@@ -45,8 +45,8 @@ vi.mock("@/features/applications/application-service", () => ({
   createApplicationService: () => serviceSpies,
 }));
 
-vi.mock("@/features/ai/provider", () => ({
-  getAIProvider: () => Promise.resolve({ extractJob }),
+vi.mock("@/features/ai/ai-service", () => ({
+  createAIService: () => ({ analyzeJob: (...args: unknown[]) => aiAnalyzeJob(...args) }),
 }));
 
 import {
@@ -83,14 +83,17 @@ describe("application server actions", () => {
     vi.clearAllMocks();
   });
 
-  it("rejects an empty description before calling the provider", async () => {
-    const result = await analyzeJob({ description: "   " });
+  it("rejects an empty description before calling the service", async () => {
+    const result = await analyzeJob({ description: "   " }, "11111111-1111-4111-8111-111111111111");
     expect(result.ok).toBe(false);
-    expect(extractJob).not.toHaveBeenCalled();
+    expect(aiAnalyzeJob).not.toHaveBeenCalled();
   });
 
-  it("analyzes a valid description through the provider and returns a validated result", async () => {
-    const result = await analyzeJob({ description: "Job text" });
+  it("analyzes a valid description through the AI service and returns a validated result", async () => {
+    const result = await analyzeJob(
+      { description: "Job text" },
+      "11111111-1111-4111-8111-111111111111",
+    );
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.result.mode).toBe("demo");

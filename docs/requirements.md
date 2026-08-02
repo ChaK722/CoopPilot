@@ -215,6 +215,10 @@ The functional requirements are organized by module. The master list is:
 ## 14. Demo Mode when no AI API key is configured
 
 - **DEMO-1** The provider is selected on the server: if external AI configuration is valid, the external provider is used; if the key is absent, `DemoAIProvider` is used automatically. The browser cannot choose an unconfigured provider or supply a secret key. There is no user-facing provider toggle in the MVP (see Appendix A, O-10).
+- **DEMO-1a** For the MVP, Demo Mode is the implemented mode; the external
+  provider adapter is an explicitly deferred extension slot and no external
+  AI key is configured or claimed. The database keeps `generation_mode =
+external` as future-compatible structure.
 - **DEMO-2** All four AI operations work in Demo Mode: job extraction, match analysis, cover letter generation, and interview preparation.
 - **DEMO-3** Demo Mode is deterministic: identical input produces identical output, which makes the mode testable.
 - **DEMO-4** Demo extraction returns a fixed, reasonable structured example while preserving the submitted URL and the complete original description; the user edits fields before saving (see Appendix A, O-9).

@@ -640,6 +640,48 @@ Verification evidence:
 
 Phase 6 has not been started. No out-of-scope feature was added.
 
+### Phase 5 hardening — 2026-08-02
+
+Product decision (external mode): Demo Mode is the implemented mode of the
+MVP. The provider contract keeps an external adapter slot, but no external
+AI provider is configured or claimed; the database keeps `generation_mode =
+external` as future-compatible structure. Phase 5 completion is declared
+based on the Demo Mode exit criterion only.
+
+Database hardening (new migration `20260802000006_phase5_ai_hardening.sql`):
+
+- `match_analyses` and `generated_documents` gain nullable `ai_run_id` FKs
+  with partial unique indexes (one match per run; one document per
+  run/type), so a single generation run can never produce duplicate results.
+- `ai_runs.result_json` stores persisted `job_extraction` results.
+- `create_ai_run` is now concurrency-safe atomic idempotency
+  (`insert ... on conflict do nothing` then read-back) and returns
+  `id/status/created/safe_error_message`; it enforces operation/application
+  shape (job extraction has no application; other operations require an
+  owned application).
+- Strict lifecycle: `running -> succeeded|failed`; `complete_ai_run` only
+  marks owned `running` runs failed; success is set by the result RPC in the
+  same transaction. Failed runs never accept results.
+- Specialized RPCs: `insert_match_analysis` (run-bound, invariant-checked,
+  idempotent), `insert_cover_letter_generation`, `insert_cover_letter_revision`
+  (manual edits/restores never create AI runs; `ai_run_id = null`,
+  `user_edited = true`), `insert_interview_prep_bundle` (all three document
+  types in one transaction; any failure rolls back all three), and
+  `save_job_extraction_result`. The old permissive `insert_generated_document`
+  is revoked from authenticated users.
+- Version numbers are assigned after locking the application row, making
+  concurrent edits/generations safe without application-level mutexes.
+- Job extraction now runs through the unified `ai_runs` lifecycle: the
+  Analyze action supplies an idempotency key, `created=true` runs the
+  provider once, succeeded retries read the stored result, running keys are
+  reported as in progress, and failed keys return the safe failure message.
+
+Tests: 253 + hardening additions (concurrent create_ai_run, run/application/
+operation/mode/status binding, result idempotency, interview-prep atomicity,
+version concurrency, direct-write prevention, cross-user isolation).
+
+Phase 6 has not been started. No out-of-scope feature was added.
+
 ## 7. Phase 6 — Dashboard and analytics
 
 ### 6A. Analytics query layer and summary cards

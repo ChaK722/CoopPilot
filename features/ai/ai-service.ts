@@ -12,14 +12,30 @@ import {
   type MatchInput,
 } from "@/features/ai/schemas";
 import { applicationSourceHash, profileSourceHash } from "@/features/ai/source-hashes";
-import type { JobExtractionResult } from "@/features/ai/extraction-schema";
+import { jobExtractionResultSchema } from "@/features/ai/extraction-schema";
 
 const LIST_LIMIT = 100;
 
 type DbClient = SupabaseClient;
 
+type RunOperation = "job_extraction" | "match_analysis" | "cover_letter" | "interview_prep";
+
+interface RunInfo {
+  id: string;
+  status: string;
+  created: boolean;
+  safe_error_message: string | null;
+}
+
 function notFound(): AppError {
   return new AppError("not_found", "The application was not found or is not yours.");
+}
+
+function inProgress(): AppError {
+  return new AppError(
+    "conflict",
+    "A request with the same key is already in progress. Please wait.",
+  );
 }
 
 export function createAIService(supabase: DbClient) {
@@ -33,8 +49,7 @@ export function createAIService(supabase: DbClient) {
   }
 
   async function loadProfileData(userId: string) {
-    const bundle = await profileService.getProfileBundle(userId);
-    return bundle;
+    return profileService.getProfileBundle(userId);
   }
 
   function toMatchInput(
@@ -107,11 +122,11 @@ export function createAIService(supabase: DbClient) {
 
   async function createRun(
     userId: string,
-    applicationId: string,
-    operation: "match_analysis" | "cover_letter" | "interview_prep",
+    applicationId: string | null,
+    operation: RunOperation,
     idempotencyKey: string,
     mode: "demo",
-  ): Promise<{ id: string; status: string }> {
+  ): Promise<RunInfo> {
     const { data, error } = await supabase.rpc("create_ai_run", {
       p_user_id: userId,
       p_application_id: applicationId,
@@ -126,56 +141,83 @@ export function createAIService(supabase: DbClient) {
         error,
       );
     }
-    const row = (data as Array<{ id: string; status: string }> | null)?.[0];
+    const row = (data as RunInfo[] | null)?.[0];
     if (!row) throw new AppError("unexpected", "Could not start the AI request.");
     return row;
   }
 
-  async function completeRun(
-    userId: string,
-    runId: string,
-    status: "succeeded" | "failed",
-    safeError: string | null,
-  ) {
+  async function completeRunFailed(userId: string, runId: string, safeError: string) {
     const { error } = await supabase.rpc("complete_ai_run", {
       p_user_id: userId,
       p_run_id: runId,
-      p_status: status,
+      p_status: "failed",
       p_safe_error: safeError,
     });
     if (error) {
-      throw new AppError("database_unavailable", "Could not finalize the AI request.", error);
+      // Never mask the original business error.
+      return;
     }
   }
 
-  async function loadCurrentHashes(userId: string, applicationId: string) {
-    const [application, profile] = await Promise.all([
-      loadApplicationData(userId, applicationId),
-      loadProfileData(userId),
-    ]);
-    return {
-      profileHash: profileSourceHash({
-        profile: profile.profile,
-        skills: profile.skills,
-        experiences: profile.experiences,
-        projects: profile.projects,
-        educations: profile.educations,
-      }),
-      applicationHash: applicationSourceHash({
-        company: application.application.company,
-        job_title: application.application.job_title,
-        location: application.application.location,
-        work_arrangement: application.application.work_arrangement,
-        responsibilities: application.application.responsibilities ?? [],
-        qualifications: application.application.qualifications ?? [],
-        requiredSkills: application.skills
-          .filter((skill) => skill.requirement_type === "required")
-          .map((skill) => ({ normalized_name: skill.normalized_name })),
-        preferredSkills: application.skills
-          .filter((skill) => skill.requirement_type === "preferred")
-          .map((skill) => ({ normalized_name: skill.normalized_name })),
-      }),
-    };
+  async function readMatchByRun(userId: string, runId: string) {
+    const { data, error } = await supabase
+      .from("match_analyses")
+      .select("*")
+      .eq("ai_run_id", runId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) {
+      throw new AppError("database_unavailable", "Could not load the analysis.", error);
+    }
+    return data;
+  }
+
+  async function readDocumentByRun(userId: string, runId: string, documentType: string) {
+    const { data, error } = await supabase
+      .from("generated_documents")
+      .select("*")
+      .eq("ai_run_id", runId)
+      .eq("user_id", userId)
+      .eq("document_type", documentType)
+      .maybeSingle();
+    if (error) {
+      throw new AppError("database_unavailable", "Could not load the generated content.", error);
+    }
+    return data;
+  }
+
+  async function readExtractionByRun(userId: string, runId: string) {
+    const { data, error } = await supabase
+      .from("ai_runs")
+      .select("result_json")
+      .eq("id", runId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error) {
+      throw new AppError("database_unavailable", "Could not load the analysis.", error);
+    }
+    if (!data?.result_json) {
+      throw new AppError("unexpected", "The analysis result is missing.");
+    }
+    const parsed = jobExtractionResultSchema.safeParse(data.result_json);
+    if (!parsed.success) {
+      throw new AppError("ai_unavailable", "The stored analysis is invalid. Please analyze again.");
+    }
+    return parsed.data;
+  }
+
+  function ensureCreated(run: RunInfo) {
+    if (run.created) return;
+    if (run.status === "running") throw inProgress();
+    if (run.status === "failed") {
+      throw new AppError(
+        "ai_unavailable",
+        run.safe_error_message ?? "The AI request previously failed. Please try again.",
+      );
+    }
+    if (run.status !== "succeeded") {
+      throw new AppError("ai_unavailable", "The AI request is in an unexpected state.");
+    }
   }
 
   return {
@@ -196,7 +238,35 @@ export function createAIService(supabase: DbClient) {
           .eq("user_id", userId)
           .order("version", { ascending: true })
           .limit(LIST_LIMIT),
-        loadCurrentHashes(userId, applicationId),
+        (async () => {
+          const [application, profile] = await Promise.all([
+            loadApplicationData(userId, applicationId),
+            loadProfileData(userId),
+          ]);
+          return {
+            profileHash: profileSourceHash({
+              profile: profile.profile,
+              skills: profile.skills,
+              experiences: profile.experiences,
+              projects: profile.projects,
+              educations: profile.educations,
+            }),
+            applicationHash: applicationSourceHash({
+              company: application.application.company,
+              job_title: application.application.job_title,
+              location: application.application.location,
+              work_arrangement: application.application.work_arrangement,
+              responsibilities: application.application.responsibilities ?? [],
+              qualifications: application.application.qualifications ?? [],
+              requiredSkills: application.skills
+                .filter((skill) => skill.requirement_type === "required")
+                .map((skill) => ({ normalized_name: skill.normalized_name })),
+              preferredSkills: application.skills
+                .filter((skill) => skill.requirement_type === "preferred")
+                .map((skill) => ({ normalized_name: skill.normalized_name })),
+            }),
+          };
+        })(),
       ]);
 
       const error = match.error ?? documents.error;
@@ -238,16 +308,13 @@ export function createAIService(supabase: DbClient) {
 
     async generateMatchAnalysis(userId: string, applicationId: string, idempotencyKey: string) {
       const run = await createRun(userId, applicationId, "match_analysis", idempotencyKey, "demo");
-      if (run.status === "succeeded") {
-        const { data } = await supabase
-          .from("match_analyses")
-          .select("*")
-          .eq("application_id", applicationId)
-          .eq("user_id", userId)
-          .order("generated_at", { ascending: false })
-          .limit(1)
-          .single();
-        return data;
+      if (!run.created) {
+        ensureCreated(run);
+        const existing = await readMatchByRun(userId, run.id);
+        if (!existing) {
+          throw new AppError("unexpected", "The analysis result is missing.");
+        }
+        return existing;
       }
 
       try {
@@ -279,17 +346,27 @@ export function createAIService(supabase: DbClient) {
             error,
           );
         }
-        return validated.data;
+        const saved = await readMatchByRun(userId, run.id);
+        return saved;
       } catch (error) {
-        await completeRun(userId, run.id, "failed", safeErrorOf(error));
+        if (error instanceof AppError) {
+          await completeRunFailed(userId, run.id, error.safeMessage);
+        } else {
+          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+        }
         throw error;
       }
     },
 
     async generateCoverLetter(userId: string, applicationId: string, idempotencyKey: string) {
       const run = await createRun(userId, applicationId, "cover_letter", idempotencyKey, "demo");
-      if (run.status === "succeeded") {
-        return this.getLatestDocument(userId, applicationId, "cover_letter");
+      if (!run.created) {
+        ensureCreated(run);
+        const existing = await readDocumentByRun(userId, run.id, "cover_letter");
+        if (!existing) {
+          throw new AppError("unexpected", "The cover letter is missing.");
+        }
+        return existing;
       }
 
       try {
@@ -340,15 +417,12 @@ export function createAIService(supabase: DbClient) {
           );
         }
 
-        const { error } = await supabase.rpc("insert_generated_document", {
+        const { error } = await supabase.rpc("insert_cover_letter_generation", {
           p_user_id: userId,
           p_application_id: applicationId,
-          p_document_type: "cover_letter",
-          p_content_text: validated.data.content ?? null,
-          p_content_json: null,
-          p_mode: "demo",
-          p_user_edited: false,
           p_run_id: run.id,
+          p_content: validated.data.content ?? "",
+          p_mode: "demo",
         });
         if (error) {
           throw new AppError(
@@ -357,17 +431,31 @@ export function createAIService(supabase: DbClient) {
             error,
           );
         }
-        return validated.data;
+        const saved = await readDocumentByRun(userId, run.id, "cover_letter");
+        return saved;
       } catch (error) {
-        await completeRun(userId, run.id, "failed", safeErrorOf(error));
+        if (error instanceof AppError) {
+          await completeRunFailed(userId, run.id, error.safeMessage);
+        } else {
+          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+        }
         throw error;
       }
     },
 
     async generateInterviewPrep(userId: string, applicationId: string, idempotencyKey: string) {
       const run = await createRun(userId, applicationId, "interview_prep", idempotencyKey, "demo");
-      if (run.status === "succeeded") {
-        return this.getLatestDocument(userId, applicationId, "interview_prep");
+      if (!run.created) {
+        ensureCreated(run);
+        const [behavioural, technical, research] = await Promise.all([
+          readDocumentByRun(userId, run.id, "behavioural_questions"),
+          readDocumentByRun(userId, run.id, "technical_questions"),
+          readDocumentByRun(userId, run.id, "research_checklist"),
+        ]);
+        if (!behavioural || !technical || !research) {
+          throw new AppError("unexpected", "The interview preparation is incomplete.");
+        }
+        return { behavioural, technical, research };
       }
 
       try {
@@ -413,67 +501,45 @@ export function createAIService(supabase: DbClient) {
           );
         }
 
-        const parts: Array<{
-          type: "behavioural_questions" | "technical_questions" | "research_checklist";
-          json: unknown;
-        }> = [
-          {
-            type: "behavioural_questions",
-            json: { questions: validated.data.behavioural_questions },
-          },
-          {
-            type: "technical_questions",
-            json: { questions: validated.data.technical_questions },
-          },
-          {
-            type: "research_checklist",
-            json: { items: validated.data.research_checklist },
-          },
-        ];
-
-        for (const part of parts) {
-          const { error } = await supabase.rpc("insert_generated_document", {
-            p_user_id: userId,
-            p_application_id: applicationId,
-            p_document_type: part.type,
-            p_content_text: null,
-            p_content_json: part.json,
-            p_mode: "demo",
-            p_user_edited: false,
-            p_run_id: run.id,
-          });
-          if (error) {
-            throw new AppError(
-              "database_unavailable",
-              "Could not save the interview preparation. Please try again.",
-              error,
-            );
-          }
+        // One atomic bundle RPC writes all three parts in a single transaction.
+        const { error } = await supabase.rpc("insert_interview_prep_bundle", {
+          p_user_id: userId,
+          p_application_id: applicationId,
+          p_run_id: run.id,
+          p_mode: "demo",
+          p_behavioural: { questions: validated.data.behavioural_questions },
+          p_technical: { questions: validated.data.technical_questions },
+          p_research: { items: validated.data.research_checklist },
+        });
+        if (error) {
+          throw new AppError(
+            "database_unavailable",
+            "Could not save the interview preparation. Please try again.",
+            error,
+          );
         }
-        return validated.data;
+        const [behavioural, technical, research] = await Promise.all([
+          readDocumentByRun(userId, run.id, "behavioural_questions"),
+          readDocumentByRun(userId, run.id, "technical_questions"),
+          readDocumentByRun(userId, run.id, "research_checklist"),
+        ]);
+        return { behavioural, technical, research };
       } catch (error) {
-        await completeRun(userId, run.id, "failed", safeErrorOf(error));
+        if (error instanceof AppError) {
+          await completeRunFailed(userId, run.id, error.safeMessage);
+        } else {
+          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+        }
         throw error;
       }
     },
 
     async saveCoverLetterEdit(userId: string, applicationId: string, content: string) {
-      const run = await createRun(
-        userId,
-        applicationId,
-        "cover_letter",
-        crypto.randomUUID(),
-        "demo",
-      );
-      const { error } = await supabase.rpc("insert_generated_document", {
+      const { error } = await supabase.rpc("insert_cover_letter_revision", {
         p_user_id: userId,
         p_application_id: applicationId,
-        p_document_type: "cover_letter",
-        p_content_text: content,
-        p_content_json: null,
-        p_mode: "demo",
-        p_user_edited: true,
-        p_run_id: run.id,
+        p_content: content,
+        p_revision_source: "edited",
       });
       if (error) {
         throw new AppError(
@@ -503,44 +569,73 @@ export function createAIService(supabase: DbClient) {
       if (!versionRow?.content_text) {
         throw new AppError("not_found", "The version was not found.");
       }
-      await this.saveCoverLetterEdit(userId, applicationId, versionRow.content_text);
+      const { error } = await supabase.rpc("insert_cover_letter_revision", {
+        p_user_id: userId,
+        p_application_id: applicationId,
+        p_content: versionRow.content_text,
+        p_revision_source: "restored",
+      });
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not restore the version. Please try again.",
+          error,
+        );
+      }
     },
 
-    async getLatestDocument(
+    /**
+     * Job extraction with the unified ai_runs lifecycle. The Analyze flow
+     * generates a fresh idempotency key per click; succeeded retries read the
+     * stored result, running keys return "in progress", failed keys return
+     * the safe failure message without re-running the provider.
+     */
+    async analyzeJob(
       userId: string,
-      applicationId: string,
-      type: "cover_letter" | "interview_prep",
+      input: { description: string; url: string | null },
+      idempotencyKey: string,
     ) {
-      const { data, error } = await supabase
-        .from("generated_documents")
-        .select("*")
-        .eq("application_id", applicationId)
-        .eq("user_id", userId)
-        .eq("document_type", type)
-        .order("version", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) {
-        throw new AppError("database_unavailable", "Could not load the generated content.", error);
+      const run = await createRun(userId, null, "job_extraction", idempotencyKey, "demo");
+      if (!run.created) {
+        ensureCreated(run);
+        return readExtractionByRun(userId, run.id);
       }
-      return data;
+
+      try {
+        const provider = await getAIProvider();
+        const result = await withProviderTimeout(
+          provider.extractJob({ description: input.description, url: input.url }),
+        );
+        const validated = jobExtractionResultSchema.safeParse(result);
+        if (!validated.success) {
+          throw new AppError(
+            "ai_unavailable",
+            "The analysis returned an invalid result. Please try again.",
+          );
+        }
+        const { error } = await supabase.rpc("save_job_extraction_result", {
+          p_user_id: userId,
+          p_run_id: run.id,
+          p_result: validated.data,
+        });
+        if (error) {
+          throw new AppError(
+            "database_unavailable",
+            "Could not save the analysis. Please try again.",
+            error,
+          );
+        }
+        return validated.data;
+      } catch (error) {
+        if (error instanceof AppError) {
+          await completeRunFailed(userId, run.id, error.safeMessage);
+        } else {
+          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+        }
+        throw error;
+      }
     },
   };
 }
 
 export type AIService = ReturnType<typeof createAIService>;
-
-function safeErrorOf(error: unknown): string {
-  if (error instanceof AppError) return error.safeMessage;
-  return "The AI request failed. Please try again.";
-}
-
-/** Re-exported for the existing analyzeJob action (Phase 3). */
-export async function analyzeWithDemoProvider(input: {
-  description: string;
-  url: string | null;
-}): Promise<JobExtractionResult> {
-  const provider = await getAIProvider();
-  const result = await withProviderTimeout(provider.extractJob(input));
-  return result;
-}

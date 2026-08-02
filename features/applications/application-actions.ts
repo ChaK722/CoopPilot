@@ -16,7 +16,7 @@ import {
   notesSchema,
 } from "@/lib/validation/applications";
 import { createApplicationService } from "@/features/applications/application-service";
-import { getAIProvider } from "@/features/ai/provider";
+import { createAIService } from "@/features/ai/ai-service";
 import { jobExtractionResultSchema } from "@/features/ai/extraction-schema";
 
 type ActionResult = { ok: true } | { ok: false; error: string };
@@ -46,25 +46,27 @@ function refreshApplicationPaths(id?: string) {
 
 export async function analyzeJob(
   input: unknown,
+  idempotencyKey: unknown,
 ): Promise<
   { ok: true; result: z.output<typeof jobExtractionResultSchema> } | { ok: false; error: string }
 > {
   const parsed = analysisInputSchema.safeParse(input);
-  if (!parsed.success) {
+  const keyParsed = z.string().uuid().safeParse(idempotencyKey);
+  if (!parsed.success || !keyParsed.success) {
     return { ok: false, error: "Please paste a non-empty job description." };
   }
   try {
-    await requireUser();
-    const provider = await getAIProvider();
-    const result = await provider.extractJob({
-      description: parsed.data.description,
-      url: parsed.data.url,
-    });
-    const validated = jobExtractionResultSchema.safeParse(result);
-    if (!validated.success) {
-      return { ok: false, error: "The analysis returned an invalid result. Please try again." };
-    }
-    return { ok: true, result: validated.data };
+    const user = await requireUser();
+    const supabase = await createServerSupabaseClient();
+    const result = await createAIService(supabase).analyzeJob(
+      user.id,
+      {
+        description: parsed.data.description,
+        url: parsed.data.url,
+      },
+      keyParsed.data,
+    );
+    return { ok: true, result };
   } catch (error) {
     return toActionResult(error);
   }

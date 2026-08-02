@@ -18,8 +18,10 @@ usable without an external AI API key (Demo Mode).
 > AI job preparation — match analysis with weighted scores and stale
 > detection, versioned cover letters with sufficiency checks, and interview
 > preparation, all running deterministically in Demo Mode with idempotent
-> AI-run records. Later phases (analytics, deployment) are tracked in
-> `docs/implementation-plan.md`.
+> AI-run records. Demo Mode is the implemented mode for the MVP; an external
+> AI provider adapter is a documented, explicitly deferred item (no external
+> key is configured or claimed). Later phases (analytics, deployment) are
+> tracked in `docs/implementation-plan.md`.
 
 ## Development environment and CI
 
