@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import { TagInput } from "@/features/profile/tag-input";
+import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import {
   createEducation,
   deleteEducation,
@@ -56,6 +57,7 @@ export function EducationEditor({ initial }: { initial: EducationRow[] }) {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<EducationRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const dirty = editingId !== null;
 
   function set<K extends keyof EducationValues>(key: K, value: EducationValues[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -138,6 +140,7 @@ export function EducationEditor({ initial }: { initial: EducationRow[] }) {
             No education added yet. Add your school to get started.
           </p>
         ) : null}
+        <UnsavedChangesNotice dirty={dirty} />
 
         {initial.map((row, index) => (
           <div key={row.id} className="flex items-start gap-3 rounded-md border border-border p-3">

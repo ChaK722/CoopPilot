@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { requireUser } from "@/lib/auth/route-guards";
 import { createServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { BasicInfoForm, type BasicProfileRow } from "@/features/profile/basic-info-form";
@@ -11,12 +11,29 @@ export const metadata: Metadata = {
 
 export default async function OnboardingPage() {
   const user = await requireUser();
-  const supabase = await createServerSupabaseClient();
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  let profile: BasicProfileRow | null = null;
+  try {
+    const supabase = await createServerSupabaseClient();
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    profile = (data ?? null) as BasicProfileRow | null;
+  } catch {
+    return (
+      <div className="flex flex-col items-start gap-3">
+        <h1 className="text-2xl font-semibold">Set up your profile</h1>
+        <div className="flex items-start gap-3 rounded-md border border-border bg-card p-4">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+          <div>
+            <p className="font-medium">Could not load your profile</p>
+            <p className="text-sm text-muted-foreground">Please refresh the page to try again.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const basicRow: BasicProfileRow | null = profile
     ? {

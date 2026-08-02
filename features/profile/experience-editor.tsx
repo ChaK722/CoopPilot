@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import { TagInput } from "@/features/profile/tag-input";
+import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import {
   createExperience,
   deleteExperience,
@@ -60,6 +61,7 @@ export function ExperienceEditor({ initial }: { initial: ExperienceRow[] }) {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ExperienceRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const dirty = editingId !== null;
 
   function set<K extends keyof ExperienceValues>(key: K, value: ExperienceValues[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -137,6 +139,7 @@ export function ExperienceEditor({ initial }: { initial: ExperienceRow[] }) {
             No experience added yet. Add your first role to get started.
           </p>
         ) : null}
+        <UnsavedChangesNotice dirty={dirty} />
 
         {initial.map((row, index) => (
           <div key={row.id} className="flex items-start gap-3 rounded-md border border-border p-3">

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { TagInput } from "@/features/profile/tag-input";
+import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import { completeOnboarding, saveBasicInfo } from "@/features/profile/profile-actions";
 import { profileBasicSchema, type ProfileBasicValues } from "@/lib/validation/profile";
 
@@ -54,6 +55,9 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
   const [values, setValues] = useState<ProfileBasicValues>(() => empty(initial));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savedSnapshot, setSavedSnapshot] = useState<ProfileBasicValues>(() => empty(initial));
+
+  const dirty = JSON.stringify(values) !== JSON.stringify(savedSnapshot);
 
   function set<K extends keyof ProfileBasicValues>(key: K, value: ProfileBasicValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -80,6 +84,7 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
     }
 
     toast(mode === "onboarding" ? "Profile set up. Welcome aboard!" : "Profile saved.", "success");
+    setSavedSnapshot(JSON.parse(JSON.stringify(values)) as ProfileBasicValues);
     router.refresh();
     if (mode === "onboarding") {
       router.replace("/dashboard");
@@ -231,6 +236,7 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
           </span>
         ) : null}
       </div>
+      <UnsavedChangesNotice dirty={dirty} />
     </form>
   );
 }

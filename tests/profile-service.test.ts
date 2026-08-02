@@ -24,7 +24,7 @@ function mockSupabase(results: Record<string, unknown[]>) {
   const makeChain = () => {
     const thenable = {
       then(resolve: (value: unknown) => void) {
-        resolve({ data: [], error: null });
+        resolve(results.chainResult?.shift() ?? { data: [], error: null });
       },
     };
     return new Proxy(thenable, {
@@ -110,7 +110,7 @@ describe("createProfileService", () => {
   });
 
   it("deletes only records owned by the user", async () => {
-    const supabase = mockSupabase({});
+    const supabase = mockSupabase({ chainResult: [mockQueryResult([{ id: "edu-1" }])] });
     const service = createProfileService(supabase.client);
 
     await service.deleteEducation("user-a", "edu-1");
@@ -120,6 +120,53 @@ describe("createProfileService", () => {
     expect(deleteCall).toBeDefined();
     expect(eqArgs).toContainEqual(["id", "edu-1"]);
     expect(eqArgs).toContainEqual(["user_id", "user-a"]);
+  });
+
+  it("treats deleting a missing or foreign record as not found", async () => {
+    const supabase = mockSupabase({ chainResult: [mockQueryResult([])] });
+    const service = createProfileService(supabase.client);
+
+    await expect(service.deleteEducation("user-b", "edu-of-a")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+
+  it("moves records through the transactional swap RPC", async () => {
+    const supabase = mockSupabase({
+      chainResult: [
+        mockQueryResult([
+          { id: "edu-2", sort_order: 0 },
+          { id: "edu-1", sort_order: 1 },
+        ]),
+      ],
+      rpc: [mockQueryResult(true)],
+    });
+    const service = createProfileService(supabase.client);
+
+    await service.moveEducation("user-a", "edu-1", "up");
+
+    const rpcCall = supabase.calls.find((call) => call.method === "rpc");
+    expect(rpcCall?.args[0]).toBe("swap_sort_order");
+    expect(rpcCall?.args[1]).toEqual(
+      expect.objectContaining({ p_table: "educations", p_user_id: "user-a" }),
+    );
+  });
+
+  it("treats a failed swap on a foreign record as not found", async () => {
+    const supabase = mockSupabase({
+      chainResult: [
+        mockQueryResult([
+          { id: "edu-2", sort_order: 0 },
+          { id: "edu-1", sort_order: 1 },
+        ]),
+      ],
+      rpc: [mockQueryResult(false)],
+    });
+    const service = createProfileService(supabase.client);
+
+    await expect(service.moveEducation("user-b", "edu-of-a", "up")).rejects.toMatchObject({
+      kind: "not_found",
+    });
   });
 
   it("deduplicates skills by normalized name per category before saving", async () => {

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
 import { TagInput } from "@/features/profile/tag-input";
+import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import { replaceSkills } from "@/features/profile/profile-actions";
 import {
   SKILL_CATEGORIES,
@@ -24,16 +25,15 @@ export function SkillsEditor({ initial }: { initial: SkillRow[] }) {
   const router = useRouter();
   const { toast } = useToast();
   const [draft, setDraft] = useState<Record<SkillCategory, string[]>>(() => {
-    const grouped = Object.fromEntries(
-      SKILL_CATEGORIES.map((category) => [category, [] as string[]]),
-    ) as Record<SkillCategory, string[]>;
-    for (const skill of initial) {
-      grouped[skill.category]?.push(skill.name);
-    }
-    return grouped;
+    return groupSkills(initial);
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<Record<SkillCategory, string[]>>(() =>
+    groupSkills(initial),
+  );
+
+  const dirty = JSON.stringify(draft) !== JSON.stringify(savedSnapshot);
 
   function setCategory(category: SkillCategory, next: string[]) {
     setDraft((current) => ({ ...current, [category]: next }));
@@ -52,6 +52,7 @@ export function SkillsEditor({ initial }: { initial: SkillRow[] }) {
       return;
     }
     toast("Skills saved.", "success");
+    setSavedSnapshot(JSON.parse(JSON.stringify(draft)) as Record<SkillCategory, string[]>);
     router.refresh();
   }
 
@@ -93,7 +94,18 @@ export function SkillsEditor({ initial }: { initial: SkillRow[] }) {
             {saving ? "Saving…" : "Save skills"}
           </Button>
         </div>
+        <UnsavedChangesNotice dirty={dirty} />
       </CardContent>
     </Card>
   );
+}
+
+function groupSkills(initial: SkillRow[]): Record<SkillCategory, string[]> {
+  const grouped = Object.fromEntries(
+    SKILL_CATEGORIES.map((category) => [category, [] as string[]]),
+  ) as Record<SkillCategory, string[]>;
+  for (const skill of initial) {
+    grouped[skill.category]?.push(skill.name);
+  }
+  return grouped;
 }

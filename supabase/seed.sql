@@ -1,6 +1,8 @@
 -- CoopPilot demo seed (run by `supabase db seed` / `tinbase db reset`).
 -- The demo account password is NOT stored here; the seed script assigns it.
 -- On hosted Supabase this file is applied with elevated (service) privileges.
+-- The demo email below matches the seed script's SEED_DEMO_EMAIL default
+-- (demo@cooppilot.local); change both together when customizing.
 
 -- Demo profile: row is created by the on_auth_user_created trigger when the
 -- seed script creates the demo user; this statement fills in realistic data.
@@ -85,14 +87,16 @@ cross join jsonb_array_elements('[
   {"category":"tools","name":"Git","normalized_name":"git"},
   {"category":"tools","name":"PostgreSQL","normalized_name":"postgresql"},
   {"category":"concepts","name":"REST APIs","normalized_name":"rest apis"},
+  {"category":"concepts","name":"Data Structures & Algorithms","normalized_name":"data structures & algorithms"},
   {"category":"spoken_languages","name":"English","normalized_name":"english"},
   {"category":"spoken_languages","name":"Mandarin","normalized_name":"mandarin"}
 ]'::jsonb) with ordinality as skill(item, ord)
 where u.email = 'demo@cooppilot.local'
-on conflict (id) do update
+on conflict (user_id, category, normalized_name) do update
 set category = excluded.category,
     name = excluded.name,
-    normalized_name = excluded.normalized_name;
+    normalized_name = excluded.normalized_name,
+    id = excluded.id;
 
 insert into public.experiences (
   id, user_id, title, organization, location, start_date, end_date,

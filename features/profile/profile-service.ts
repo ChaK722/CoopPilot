@@ -181,17 +181,21 @@ export function createProfileService(supabase: DbClient) {
     },
 
     async deleteEducation(userId: string, educationId: string) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("educations")
         .delete()
         .eq("id", educationId)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .select("id");
       if (error) {
         throw new AppError(
           "database_unavailable",
           "Could not delete the education. Please try again.",
           error,
         );
+      }
+      if (!data || data.length === 0) {
+        throw notFound("education");
       }
     },
 
@@ -201,7 +205,13 @@ export function createProfileService(supabase: DbClient) {
       if (index < 0) throw notFound("education");
       const swapIndex = direction === "up" ? index - 1 : index + 1;
       if (swapIndex < 0 || swapIndex >= items.length) return;
-      await this.swapSortOrder("educations", userId, items[index].id, items[swapIndex].id);
+      const swapped = await this.swapSortOrder(
+        "educations",
+        userId,
+        items[index].id,
+        items[swapIndex].id,
+      );
+      if (!swapped) throw notFound("education");
     },
 
     // --- Skills ------------------------------------------------------------
@@ -312,17 +322,21 @@ export function createProfileService(supabase: DbClient) {
     },
 
     async deleteExperience(userId: string, experienceId: string) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("experiences")
         .delete()
         .eq("id", experienceId)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .select("id");
       if (error) {
         throw new AppError(
           "database_unavailable",
           "Could not delete the experience. Please try again.",
           error,
         );
+      }
+      if (!data || data.length === 0) {
+        throw notFound("experience");
       }
     },
 
@@ -332,7 +346,13 @@ export function createProfileService(supabase: DbClient) {
       if (index < 0) throw notFound("experience");
       const swapIndex = direction === "up" ? index - 1 : index + 1;
       if (swapIndex < 0 || swapIndex >= items.length) return;
-      await this.swapSortOrder("experiences", userId, items[index].id, items[swapIndex].id);
+      const swapped = await this.swapSortOrder(
+        "experiences",
+        userId,
+        items[index].id,
+        items[swapIndex].id,
+      );
+      if (!swapped) throw notFound("experience");
     },
 
     // --- Projects ----------------------------------------------------------
@@ -390,17 +410,21 @@ export function createProfileService(supabase: DbClient) {
     },
 
     async deleteProject(userId: string, projectId: string) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("projects")
         .delete()
         .eq("id", projectId)
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .select("id");
       if (error) {
         throw new AppError(
           "database_unavailable",
           "Could not delete the project. Please try again.",
           error,
         );
+      }
+      if (!data || data.length === 0) {
+        throw notFound("project");
       }
     },
 
@@ -410,7 +434,13 @@ export function createProfileService(supabase: DbClient) {
       if (index < 0) throw notFound("project");
       const swapIndex = direction === "up" ? index - 1 : index + 1;
       if (swapIndex < 0 || swapIndex >= items.length) return;
-      await this.swapSortOrder("projects", userId, items[index].id, items[swapIndex].id);
+      const swapped = await this.swapSortOrder(
+        "projects",
+        userId,
+        items[index].id,
+        items[swapIndex].id,
+      );
+      if (!swapped) throw notFound("project");
     },
 
     // --- Shared ------------------------------------------------------------
@@ -420,44 +450,17 @@ export function createProfileService(supabase: DbClient) {
       userId: string,
       idA: string,
       idB: string,
-    ) {
-      const list = await this.listForTable(table, userId);
-      const a = list.find((item) => item.id === idA);
-      const b = list.find((item) => item.id === idB);
-      if (!a || !b) throw notFound(table.slice(0, -1));
-      const { error: errorA } = await supabase
-        .from(table)
-        .update({ sort_order: b.sort_order })
-        .eq("id", a.id)
-        .eq("user_id", userId);
-      const { error: errorB } = await supabase
-        .from(table)
-        .update({ sort_order: a.sort_order })
-        .eq("id", b.id)
-        .eq("user_id", userId);
-      if (errorA || errorB) {
-        throw new AppError(
-          "database_unavailable",
-          "Could not reorder. Please try again.",
-          errorA ?? errorB,
-        );
-      }
-    },
-
-    async listForTable(
-      table: "educations" | "experiences" | "projects",
-      userId: string,
-    ): Promise<Array<{ id: string; sort_order: number }>> {
-      const { data, error } = await supabase
-        .from(table)
-        .select("id, sort_order")
-        .eq("user_id", userId)
-        .order("sort_order", { ascending: true })
-        .limit(LIST_LIMIT);
+    ): Promise<boolean> {
+      const { data, error } = await supabase.rpc("swap_sort_order", {
+        p_table: table,
+        p_id_a: idA,
+        p_id_b: idB,
+        p_user_id: userId,
+      });
       if (error) {
         throw new AppError("database_unavailable", "Could not reorder. Please try again.", error);
       }
-      return data ?? [];
+      return data === true;
     },
   };
 }

@@ -241,6 +241,35 @@ Defects found during manual browser testing (2026-08-02) and fixed:
   `null`/`undefined` (`nullish`) and forms submit the original values; the
   server action remains the authoritative validation pass.
 
+Hardening pass (2026-08-02):
+
+- `sort_order` is now assigned by a before-insert trigger (per-user max+1)
+  instead of a column default; reordering goes through a transactional
+  `swap_sort_order` RPC with a table-name whitelist, ownership check, and a
+  `false` result for missing/foreign records.
+- Every Server Action parameter (ids, move direction, skill arrays, form
+  payloads) is validated at runtime with Zod; invalid identifiers and
+  directions are rejected before any database work.
+- `update`/`delete`/`move` return Not Found for records that do not exist or
+  belong to another user (delete now selects the deleted row to distinguish
+  "deleted" from "not found").
+- Full RLS test matrix covers insert/read/update/delete cross-user isolation
+  on all four Phase 2 tables; sorting tests create three records, reorder
+  transactionally, and re-read on a fresh connection to prove persistence.
+- Unified unsaved-changes protection: visible "You have unsaved changes"
+  notice plus `beforeunload` guarding in the basic info form, skills editor,
+  and education/experience/project editors.
+- Onboarding shows a recoverable database-load error state instead of
+  silently rendering an empty form.
+- `seed.mjs` now accepts the same `NEXT_PUBLIC_*` variable names as the app
+  (with legacy fallbacks), rejects `.env.example` placeholders, and matches
+  `seed.sql` skill data; `.env.example` documents `SEED_DEMO_EMAIL`.
+- Component tests added for Education, Experience, and Project CRUD plus
+  delete-cancel behaviour (89 tests total).
+- Responsive audit passed: `/login`, `/signup`, `/dashboard`, `/profile`,
+  `/onboarding`, and `/applications/new` render without horizontal overflow
+  at 375px, 768px, and 1280px in a real headless browser.
+
 Phase 3 has not been started. No out-of-scope feature was added.
 
 ## 4. Phase 3 — Job management

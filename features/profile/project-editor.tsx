@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import { TagInput } from "@/features/profile/tag-input";
+import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import {
   createProject,
   deleteProject,
@@ -63,6 +64,7 @@ export function ProjectEditor({ initial }: { initial: ProjectRow[] }) {
   const [busy, setBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const dirty = editingId !== null;
 
   function set<K extends keyof ProjectValues>(key: K, value: ProjectValues[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -140,6 +142,7 @@ export function ProjectEditor({ initial }: { initial: ProjectRow[] }) {
             No projects added yet. Add your first project to get started.
           </p>
         ) : null}
+        <UnsavedChangesNotice dirty={dirty} />
 
         {initial.map((row, index) => (
           <div key={row.id} className="flex items-start gap-3 rounded-md border border-border p-3">

@@ -10,19 +10,29 @@
  *   SEED_DEMO_PASSWORD=<password> node scripts/seed.mjs
  *
  * Environment:
- *   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+ *   NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL), NEXT_PUBLIC_SUPABASE_ANON_KEY
+ *   (or SUPABASE_ANON_KEY), SUPABASE_SERVICE_ROLE_KEY
  *   SEED_DEMO_PASSWORD, SEED_DEMO_EMAIL (default demo@cooppilot.local)
  */
 
 import { createClient } from "@supabase/supabase-js";
 
-const required = [
-  "SUPABASE_URL",
-  "SUPABASE_ANON_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY",
-  "SEED_DEMO_PASSWORD",
-];
-const missing = required.filter((name) => !process.env[name]?.trim());
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim();
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || process.env.SUPABASE_ANON_KEY?.trim();
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+const demoPassword = process.env.SEED_DEMO_PASSWORD?.trim();
+
+const required = {
+  "NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL)": supabaseUrl,
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY)": supabaseAnonKey,
+  SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+  SEED_DEMO_PASSWORD: demoPassword,
+};
+const missing = Object.entries(required)
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
 
 if (missing.length > 0) {
   console.error(
@@ -32,10 +42,20 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const demoEmail = process.env.SEED_DEMO_EMAIL ?? "demo@cooppilot.local";
-const demoPassword = process.env.SEED_DEMO_PASSWORD;
+const placeholderValues = [supabaseUrl, supabaseAnonKey, serviceRoleKey, demoPassword].filter(
+  (value) => value?.startsWith("replace-with-"),
+);
+if (placeholderValues.length > 0) {
+  console.error(
+    "Environment still contains .env.example placeholder values (replace-with-...). " +
+      "Fill in real values in .env.local before seeding.",
+  );
+  process.exit(1);
+}
 
-const admin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+const demoEmail = process.env.SEED_DEMO_EMAIL ?? "demo@cooppilot.local";
+
+const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
