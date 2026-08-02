@@ -2,12 +2,27 @@ import type { ApplicationStatus } from "@/lib/validation/applications";
 
 export const UPCOMING_DEADLINE_WINDOW_DAYS = 7;
 
-/** Local calendar date (YYYY-MM-DD) used for deadline comparisons. */
-export function todayDateString(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
+/** Product timezone for calendar-date decisions (independent of host TZ). */
+export const PRODUCT_TIME_ZONE = "America/Toronto";
+
+/**
+ * Today's calendar date in America/Toronto (YYYY-MM-DD). The host server may
+ * be UTC (AWS) or local; results are identical everywhere. Accepts an
+ * optional Date so tests can fix the instant.
+ */
+export function todayDateString(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: PRODUCT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (!year || !month || !day) {
+    throw new Error("Could not format America/Toronto date.");
+  }
   return `${year}-${month}-${day}`;
 }
 

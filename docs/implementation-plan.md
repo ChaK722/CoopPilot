@@ -492,6 +492,38 @@ Verification evidence:
 Documented decisions: O-6, O-7, and O-11 are resolved in
 `docs/requirements.md` Appendix A.
 
+### Phase 4 final UI hardening — 2026-08-02
+
+UI/UX hardening applied on top of the verified Phase 4 baseline:
+
+- Board cards always render the concrete deadline (`Deadline: YYYY-MM-DD` or
+  `Deadline: —`); upcoming/expired badges are additional hints only.
+- The applied-date dialog is built on the shared accessible `Dialog`
+  (focus enters the date input, Tab/Shift+Tab are trapped, Escape and
+  overlay click close, focus returns to the triggering selector) and is
+  remounted per application so date state never leaks between cards.
+- Drag-and-drop is bound to an independent grip `<button>` handle with an
+  accessible name; the card container, Job Detail link, and status selector
+  are no longer draggable surfaces; handles/selectors disable while a
+  mutation is pending.
+- Optimistic updates now roll back only the target record, pending state is
+  tracked per application id (independent concurrent updates), and fresh
+  server payloads from `router.refresh()` are merged without clobbering
+  in-flight optimistic state; successful payloads restore the stable
+  `updated_at DESC, id ASC` order.
+- Deadline "today" is computed in `America/Toronto` via
+  `Intl.DateTimeFormat` regardless of the host timezone (Windows, Ubuntu CI,
+  or AWS/UTC produce identical results); `addCalendarDays` stays pure
+  calendar arithmetic.
+- Dashboard note: the current Dashboard contains only static navigation
+  cards (no application metrics or lists). Phase 7 analytics are not
+  implemented; Phase 4 guarantees that all future Dashboard queries default
+  to excluding archived applications at the service layer.
+- Board tests now use `userEvent`/`waitFor` and run without React `act`
+  warnings.
+
+Total automated tests: 211 (up from 190).
+
 Phase 5 has not been started. No out-of-scope feature was added.
 
 ## 6. Phase 5 — AI job-preparation features

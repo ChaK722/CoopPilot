@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,11 +15,9 @@ import {
   type KeyboardCoordinateGetter,
 } from "@dnd-kit/core";
 import { AlertTriangle, CalendarClock, GripVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { updateApplicationStatus } from "@/features/applications/application-actions";
+import { DatePromptDialog } from "@/features/applications/date-applied-dialog";
 import {
   APPLICATION_STATUSES,
   APPLICATION_STATUS_LABELS,
@@ -62,11 +60,37 @@ interface BoardProps {
   today: string;
 }
 
+/**
+ * Merges a fresh server payload with in-flight optimistic state: cards with
+ * no pending mutation follow the server; pending cards keep their optimistic
+ * values until the action settles.
+ */
+function mergeWithPending(
+  current: BoardApplication[],
+  next: BoardApplication[],
+  pendingIds: Set<string>,
+): BoardApplication[] {
+  return next.map((app) => {
+    const optimistic = current.find((item) => item.id === app.id);
+    return pendingIds.has(app.id) && optimistic ? optimistic : app;
+  });
+}
+
+function sortBoard(apps: BoardApplication[]): BoardApplication[] {
+  return [...apps].sort((a, b) => {
+    if (a.updated_at !== b.updated_at) {
+      return a.updated_at < b.updated_at ? 1 : -1;
+    }
+    return a.id < b.id ? -1 : 1;
+  });
+}
+
 export function ApplicationBoard({ initial, today }: BoardProps) {
   const router = useRouter();
   const { toast } = useToast();
-  const [apps, setApps] = useState<BoardApplication[]>(initial);
+  const [apps, setApps] = useState<BoardApplication[]>(() => sortBoard(initial));
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const pendingRef = useRef<Set<string>>(new Set());
   const [datePrompt, setDatePrompt] = useState<BoardApplication | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
 
@@ -74,6 +98,17 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
   );
+
+  // Sync server payloads without clobbering optimistic state.
+  useEffect(() => {
+    setApps((current) => {
+      const pending = pendingRef.current;
+      if (pending.size === 0) {
+        return sortBoard(initial);
+      }
+      return sortBoard(mergeWithPending(current, initial, pending));
+    });
+  }, [initial]);
 
   const grouped = useMemo(() => {
     const groups = new Map<ApplicationStatus, BoardApplication[]>();
@@ -86,12 +121,27 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     return groups;
   }, [apps]);
 
+  function focusAppSelect(appId: string) {
+    const focus = () => {
+      document.querySelector<HTMLSelectElement>(`select[data-app-id="${appId}"]`)?.focus();
+    };
+    // First attempt after the optimistic render, then again once the server
+    // refresh has replaced the payload (which can rebuild the select node).
+    requestAnimationFrame(focus);
+    window.setTimeout(focus, 120);
+  }
+
   async function performStatusChange(
     appId: string,
     toStatus: ApplicationStatus,
     dateApplied: string | null,
   ) {
-    const previous = apps;
+    if (pendingRef.current.has(appId)) return;
+    const previous = apps.find((app) => app.id === appId);
+    if (!previous) return;
+
+    pendingRef.current = new Set(pendingRef.current).add(appId);
+    setPendingIds(new Set(pendingRef.current));
     setApps((current) =>
       current.map((app) =>
         app.id === appId
@@ -99,23 +149,31 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
           : app,
       ),
     );
-    setPendingIds((current) => new Set(current).add(appId));
 
     const result = await updateApplicationStatus(appId, toStatus, dateApplied);
 
     if (!result.ok) {
-      setApps(previous);
+      // Single-record rollback: only the target card is restored.
+      setApps((current) =>
+        current.map((app) =>
+          app.id === appId
+            ? {
+                ...app,
+                status: previous.status,
+                date_applied: previous.date_applied,
+              }
+            : app,
+        ),
+      );
       setAnnouncement(result.error);
       toast(result.error, "error");
     } else {
       setAnnouncement(`Moved to ${APPLICATION_STATUS_LABELS[toStatus]}.`);
       router.refresh();
     }
-    setPendingIds((current) => {
-      const next = new Set(current);
-      next.delete(appId);
-      return next;
-    });
+
+    pendingRef.current = new Set([...pendingRef.current].filter((id) => id !== appId));
+    setPendingIds(new Set(pendingRef.current));
   }
 
   function requestStatusChange(app: BoardApplication, toStatus: ApplicationStatus) {
@@ -136,13 +194,21 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
     requestStatusChange(app, columnId as ApplicationStatus);
   }
 
+  function closeDatePrompt() {
+    if (datePrompt) {
+      const appId = datePrompt.id;
+      setDatePrompt(null);
+      focusAppSelect(appId);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
       </p>
 
-      <DndContext sensors={sensors} collisionDetection={undefined} onDragEnd={handleDragEnd}>
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
           {APPLICATION_STATUSES.map((status) => (
             <BoardColumn
@@ -158,18 +224,21 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
       </DndContext>
 
       <DatePromptDialog
+        key={datePrompt?.id ?? "none"}
         app={datePrompt}
         onConfirm={(date) => {
           if (!datePrompt) return;
-          void performStatusChange(datePrompt.id, "applied", date);
-          setDatePrompt(null);
+          const appId = datePrompt.id;
+          void performStatusChange(appId, "applied", date);
+          closeDatePrompt();
         }}
         onSkip={() => {
           if (!datePrompt) return;
-          void performStatusChange(datePrompt.id, "applied", null);
-          setDatePrompt(null);
+          const appId = datePrompt.id;
+          void performStatusChange(appId, "applied", null);
+          closeDatePrompt();
         }}
-        onCancel={() => setDatePrompt(null)}
+        onCancel={closeDatePrompt}
       />
     </div>
   );
@@ -242,6 +311,7 @@ function BoardCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: app.id,
     data: { status: app.status },
+    disabled,
   });
 
   const state = deadlineState(app.deadline, app.status, today);
@@ -249,15 +319,12 @@ function BoardCard({
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
       style={{
         transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
       }}
       className={`relative rounded-md border bg-card p-3 shadow-sm ${
         isDragging ? "z-10 opacity-70 ring-2 ring-primary" : ""
       } ${disabled ? "pointer-events-none opacity-50" : ""}`}
-      aria-label={`${app.company} — ${app.job_title}`}
     >
       <div className="flex items-start gap-1">
         <Link
@@ -267,14 +334,21 @@ function BoardCard({
           <span className="block truncate">{app.company}</span>
           <span className="block truncate text-sm text-foreground">{app.job_title}</span>
         </Link>
-        <GripVertical
-          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground"
-          aria-hidden="true"
-        />
+        <button
+          type="button"
+          {...listeners}
+          {...attributes}
+          disabled={disabled}
+          aria-label={`Move ${app.company} — ${app.job_title}`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <GripVertical className="h-4 w-4" aria-hidden="true" />
+        </button>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         {app.location ?? "No location"} · Applied: {app.date_applied ?? "—"}
       </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">Deadline: {app.deadline ?? "—"}</p>
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
           {APPLICATION_STATUS_LABELS[app.status]}
@@ -287,13 +361,14 @@ function BoardCard({
         ) : state === "upcoming" ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
             <CalendarClock className="h-3 w-3" aria-hidden="true" />
-            Deadline {app.deadline}
+            Upcoming
           </span>
         ) : null}
       </div>
       <label className="mt-2 flex items-center gap-1.5 text-xs">
         <span className="sr-only">Status for {app.company}</span>
         <select
+          data-app-id={app.id}
           value={app.status}
           disabled={disabled}
           onChange={(event) => onStatusChange(app, event.target.value as ApplicationStatus)}
@@ -306,60 +381,6 @@ function BoardCard({
           ))}
         </select>
       </label>
-    </div>
-  );
-}
-
-function DatePromptDialog({
-  app,
-  onConfirm,
-  onSkip,
-  onCancel,
-}: {
-  app: BoardApplication | null;
-  onConfirm: (date: string) => void;
-  onSkip: () => void;
-  onCancel: () => void;
-}) {
-  const [date, setDate] = useState("");
-  if (!app) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="date-prompt-title"
-    >
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} aria-hidden="true" />
-      <div className="relative w-full max-w-sm rounded-lg border border-border bg-card p-5 shadow-xl">
-        <h2 id="date-prompt-title" className="text-base font-semibold">
-          When did you apply?
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Optionally record the date you applied for {app.company}. You can skip this.
-        </p>
-        <div className="mt-4 flex flex-col gap-1.5">
-          <Label htmlFor="date-applied-prompt">Date applied</Label>
-          <Input
-            id="date-applied-prompt"
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
-        </div>
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="outline" onClick={onSkip}>
-            Skip
-          </Button>
-          <Button onClick={() => onConfirm(date)} disabled={!date}>
-            Save date
-          </Button>
-        </div>
-      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   deadlineState,
   isDeadlineExpired,
   isDeadlineUpcoming,
+  todayDateString,
 } from "@/lib/deadline";
 
 const TODAY = "2026-08-02";
@@ -50,5 +51,40 @@ describe("deadlineState", () => {
 
   it("returns none for null deadlines", () => {
     expect(deadlineState(null, "saved", TODAY)).toBe("none");
+  });
+});
+
+describe("todayDateString America/Toronto", () => {
+  it("returns the Toronto date even when UTC is already the next day (EDT, UTC-4)", () => {
+    // 03:59 UTC = 23:59 previous day in Toronto (summer EDT).
+    expect(todayDateString(new Date("2026-08-03T03:59:00Z"))).toBe("2026-08-02");
+    // 04:00 UTC = midnight in Toronto.
+    expect(todayDateString(new Date("2026-08-03T04:00:00Z"))).toBe("2026-08-03");
+  });
+
+  it("returns the Toronto date even when UTC is ahead by five hours (EST, UTC-5)", () => {
+    expect(todayDateString(new Date("2026-01-15T04:59:00Z"))).toBe("2026-01-14");
+    expect(todayDateString(new Date("2026-01-15T05:00:00Z"))).toBe("2026-01-15");
+  });
+
+  it("is stable across the spring-forward DST transition", () => {
+    // 2026-03-08 02:00 EST jumps to 03:00 EDT.
+    expect(todayDateString(new Date("2026-03-08T04:59:00Z"))).toBe("2026-03-07");
+    expect(todayDateString(new Date("2026-03-08T07:00:00Z"))).toBe("2026-03-08");
+    expect(todayDateString(new Date("2026-03-08T23:59:00Z"))).toBe("2026-03-08");
+  });
+
+  it("is stable across the fall-back DST transition", () => {
+    // 2026-11-01: EDT until 02:00, then EST; the calendar date stays Nov 1.
+    expect(todayDateString(new Date("2026-11-01T04:00:00Z"))).toBe("2026-11-01");
+    expect(todayDateString(new Date("2026-11-01T06:00:00Z"))).toBe("2026-11-01");
+    expect(todayDateString(new Date("2026-11-01T07:59:00Z"))).toBe("2026-11-01");
+  });
+
+  it("returns YYYY-MM-DD and matches the host-independent expectation", () => {
+    const value = todayDateString(new Date("2026-08-15T15:00:00Z"));
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // 15:00 UTC is still Aug 15 in Toronto (11:00 EDT).
+    expect(value).toBe("2026-08-15");
   });
 });
