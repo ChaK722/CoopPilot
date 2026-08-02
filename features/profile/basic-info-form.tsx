@@ -71,9 +71,7 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
 
     setSaving(true);
     const result =
-      mode === "onboarding"
-        ? await completeOnboarding(parsed.data)
-        : await saveBasicInfo(parsed.data);
+      mode === "onboarding" ? await completeOnboarding(values) : await saveBasicInfo(values);
     setSaving(false);
 
     if (!result.ok) {

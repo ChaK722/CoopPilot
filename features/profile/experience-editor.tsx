@@ -88,9 +88,9 @@ export function ExperienceEditor({ initial }: { initial: ExperienceRow[] }) {
     setBusy(true);
     const result =
       editingId === "new"
-        ? await createExperience(parsed.data)
+        ? await createExperience(form)
         : editingId
-          ? await updateExperience(editingId, parsed.data)
+          ? await updateExperience(editingId, form)
           : null;
     setBusy(false);
     if (!result?.ok) {

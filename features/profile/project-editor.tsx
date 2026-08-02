@@ -91,9 +91,9 @@ export function ProjectEditor({ initial }: { initial: ProjectRow[] }) {
     setBusy(true);
     const result =
       editingId === "new"
-        ? await createProject(parsed.data)
+        ? await createProject(form)
         : editingId
-          ? await updateProject(editingId, parsed.data)
+          ? await updateProject(editingId, form)
           : null;
     setBusy(false);
     if (!result?.ok) {

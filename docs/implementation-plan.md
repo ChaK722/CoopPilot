@@ -228,6 +228,19 @@ Known limitations (deferred by plan): visual browser pass at 375px/tablet/
 desktop and automated accessibility checks remain part of the Phase 7 audit;
 ordering is via move-up/move-down buttons rather than drag-and-drop.
 
+Defects found during manual browser testing (2026-08-02) and fixed:
+
+- Browser login/signup failed with "Something went wrong" because
+  `lib/env.ts` read public env vars with dynamic `process.env[name]`
+  indexing; Next.js only replaces static `process.env.NEXT_PUBLIC_*`
+  references in browser bundles. Rewritten with static reads so the browser
+  Supabase client validates configuration correctly.
+- Onboarding and editor forms double-validated: the client passed Zod
+  transform output (`null` for unset optionals) back into server actions,
+  where the schemas rejected `null`, so every save failed. Schemas now accept
+  `null`/`undefined` (`nullish`) and forms submit the original values; the
+  server action remains the authoritative validation pass.
+
 Phase 3 has not been started. No out-of-scope feature was added.
 
 ## 4. Phase 3 — Job management

@@ -89,9 +89,9 @@ export function EducationEditor({ initial }: { initial: EducationRow[] }) {
     setBusy(true);
     const result =
       editingId === "new"
-        ? await createEducation(parsed.data)
+        ? await createEducation(form)
         : editingId
-          ? await updateEducation(editingId, parsed.data)
+          ? await updateEducation(editingId, form)
           : null;
     setBusy(false);
     if (!result?.ok) {

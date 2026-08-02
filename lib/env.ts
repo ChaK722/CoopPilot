@@ -3,8 +3,6 @@
  * startup so a misconfigured deployment fails fast with a clear message.
  */
 
-const REQUIRED_PUBLIC_VARS = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
-
 /** Startup/configuration failure with a safe, user-displayable message. */
 export class ConfigError extends Error {
   readonly safeMessage: string;
@@ -16,11 +14,20 @@ export class ConfigError extends Error {
   }
 }
 
-function missing(vars: readonly string[]): string[] {
-  return vars.filter((name) => {
-    const value = process.env[name];
-    return value === undefined || value === null || value.trim() === "";
-  });
+/**
+ * Required public variables. Each reference is a STATIC process.env read so
+ * Next.js replaces it at build time for the browser bundle; dynamic indexing
+ * (process.env[name]) would be undefined in the browser and break validation.
+ */
+function missing(): string[] {
+  const absent: string[] = [];
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL?.trim()) {
+    absent.push("NEXT_PUBLIC_SUPABASE_URL");
+  }
+  if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim()) {
+    absent.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  }
+  return absent;
 }
 
 export function validatePublicEnv(): {
@@ -28,7 +35,7 @@ export function validatePublicEnv(): {
   missing: string[];
   message?: string;
 } {
-  const absent = missing(REQUIRED_PUBLIC_VARS);
+  const absent = missing();
   if (absent.length > 0) {
     return {
       ok: false,

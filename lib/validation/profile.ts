@@ -25,11 +25,11 @@ export function normalizeSkillName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** A valid http(s) URL, empty string, or undefined (all meaning "not set"). */
+/** A valid http(s) URL, empty string, null, or undefined (all meaning "not set"). */
 const optionalHttpUrl = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .refine(
     (value) => {
       if (!value) return true;
@@ -44,11 +44,11 @@ const optionalHttpUrl = z
   )
   .transform((value) => (value ? value : null));
 
-/** A YYYY-MM-DD calendar date, empty string, or undefined (meaning "not set"). */
+/** A YYYY-MM-DD calendar date, empty string, null, or undefined (meaning "not set"). */
 const optionalDate = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .refine(
     (value) => {
       if (!value) return true;
@@ -70,7 +70,7 @@ const requiredText = (message: string) => z.string().trim().min(1, message);
 const optionalText = z
   .string()
   .trim()
-  .optional()
+  .nullish()
   .transform((value) => (value ? value : null));
 
 function datesInOrder(
