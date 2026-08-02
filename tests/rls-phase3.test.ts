@@ -11,7 +11,7 @@ import {
 
 interface TableSpec {
   table: string;
-  ownInsert: (userId: string, applicationId: string, label: string) => string;
+  ownInsert: (userId: string, applicationId: string) => string;
   updateColumn: string;
   updateValue?: string;
   extraInsert?: (userId: string, foreignApplicationId: string) => string;
@@ -39,19 +39,6 @@ const TABLES: TableSpec[] = [
        values ('${userId}', '${foreignApplicationId}', 'required', 'Sneaky', 'sneaky')`,
   },
   {
-    table: "application_status_events",
-    ownInsert: (userId, applicationId) =>
-      `insert into public.application_status_events
-         (user_id, application_id, from_status, to_status)
-       values ('${userId}', '${applicationId}', null, 'saved')`,
-    updateColumn: "to_status",
-    updateValue: "applied",
-    extraInsert: (userId, foreignApplicationId) =>
-      `insert into public.application_status_events
-         (user_id, application_id, from_status, to_status)
-       values ('${userId}', '${foreignApplicationId}', null, 'saved')`,
-  },
-  {
     table: "interviews",
     ownInsert: (userId, applicationId) =>
       `insert into public.interviews
@@ -70,6 +57,7 @@ describe("Phase 3 RLS matrix: all four application tables", () => {
   let userA: string;
   let userB: string;
   let appA: string;
+  let appB: string;
 
   beforeAll(async () => {
     ctx = await startTestPostgres();
@@ -87,6 +75,16 @@ describe("Phase 3 RLS matrix: all four application tables", () => {
        )`,
     );
     appA = created.rows[0].create_application;
+
+    const createdB = await asUser(
+      ctx.port,
+      userB,
+      `select public.create_application(
+         '${userB}', gen_random_uuid(), 'B Corp', 'B Role', null, null, null, null, null,
+         null, null, '{}', null, null, 'B job text', '{}', '{}', '[]'::jsonb, 'saved'
+       )`,
+    );
+    appB = createdB.rows[0].create_application;
   }, 180_000);
 
   afterAll(async () => {
@@ -111,11 +109,10 @@ describe("Phase 3 RLS matrix: all four application tables", () => {
   for (const spec of TABLES) {
     describe(spec.table, () => {
       it("allows the owner to insert, read, update, and delete their own rows", async () => {
-        const label = `own-${spec.table}`;
         const inserted = await asUser(
           ctx.port,
           userA,
-          `${spec.ownInsert(userA, appA, label)} returning id`,
+          `${spec.ownInsert(userA, appA)} returning id`,
         );
         const rowId = inserted.rows[0].id;
 
@@ -142,13 +139,13 @@ describe("Phase 3 RLS matrix: all four application tables", () => {
       });
 
       it("rejects inserting a row that names another user", async () => {
-        await expect(
-          asUser(ctx.port, userB, spec.ownInsert(userA, appA, "foreign")),
-        ).rejects.toThrow(/row-level security/i);
+        await expect(asUser(ctx.port, userB, spec.ownInsert(userA, appA))).rejects.toThrow(
+          /row-level security/i,
+        );
       });
 
       it("hides the other user's rows from reads", async () => {
-        await asUser(ctx.port, userA, spec.ownInsert(userA, appA, "hidden"));
+        await asUser(ctx.port, userA, spec.ownInsert(userA, appA));
         const readB = await asUser(ctx.port, userB, `select * from public.${spec.table}`);
         expect(readB.rows.every((row) => row.user_id === userB)).toBe(true);
       });
@@ -191,5 +188,105 @@ describe("Phase 3 RLS matrix: all four application tables", () => {
         /row-level security/i,
       );
     }
+  });
+
+  it("prevents re-linking an interview to another user's application", async () => {
+    const { rows } = await ctx.admin.query(
+      "select id from public.interviews where user_id = $1 limit 1",
+      [userA],
+    );
+    let interviewId = rows[0]?.id as string | undefined;
+    if (!interviewId) {
+      await asUser(
+        ctx.port,
+        userA,
+        `insert into public.interviews (user_id, application_id, interview_type, scheduled_at)
+         values ('${userA}', '${appA}', 'Technical', now())`,
+      );
+      const { rows: after } = await ctx.admin.query(
+        "select id from public.interviews where user_id = $1 limit 1",
+        [userA],
+      );
+      interviewId = after[0].id;
+    }
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `update public.interviews
+         set application_id = '${appB}'
+         where id = '${interviewId}'`,
+      ),
+    ).rejects.toThrow(/row-level security/i);
+
+    const unchanged = await ctx.admin.query(
+      "select application_id from public.interviews where id = $1",
+      [interviewId],
+    );
+    expect(unchanged.rows[0].application_id).toBe(appA);
+  });
+
+  describe("application_status_events append-only", () => {
+    it("allows reading the initial event created by the RPC", async () => {
+      const read = await asUser(
+        ctx.port,
+        userA,
+        `select * from public.application_status_events where user_id = '${userA}'`,
+      );
+      expect(read.rows.length).toBeGreaterThan(0);
+      expect(read.rows[0].from_status).toBeNull();
+      expect(read.rows[0].to_status).toBe("saved");
+    });
+
+    it("rejects direct inserts by ordinary users", async () => {
+      await expect(
+        asUser(
+          ctx.port,
+          userA,
+          `insert into public.application_status_events
+             (user_id, application_id, from_status, to_status)
+           values ('${userA}', '${appA}', 'saved', 'applied')`,
+        ),
+      ).rejects.toThrow(/row-level security|permission denied/i);
+    });
+
+    it("rejects direct updates by ordinary users", async () => {
+      const { rows } = await ctx.admin.query(
+        "select id from public.application_status_events where user_id = $1 limit 1",
+        [userA],
+      );
+      const result = await asUser(
+        ctx.port,
+        userA,
+        `update public.application_status_events
+         set to_status = 'applied'
+         where id = '${rows[0].id}'`,
+      );
+      expect(result.rowCount).toBe(0);
+      const unchanged = await ctx.admin.query(
+        "select to_status from public.application_status_events where id = $1",
+        [rows[0].id],
+      );
+      expect(unchanged.rows[0].to_status).toBe("saved");
+    });
+
+    it("rejects direct deletes by ordinary users", async () => {
+      const { rows } = await ctx.admin.query(
+        "select id from public.application_status_events where user_id = $1 limit 1",
+        [userA],
+      );
+      const result = await asUser(
+        ctx.port,
+        userA,
+        `delete from public.application_status_events where id = '${rows[0].id}'`,
+      );
+      expect(result.rowCount).toBe(0);
+      const stillThere = await ctx.admin.query(
+        "select count(*)::int as c from public.application_status_events where id = $1",
+        [rows[0].id],
+      );
+      expect(stillThere.rows[0].c).toBe(1);
+    });
   });
 });
