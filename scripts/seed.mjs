@@ -278,6 +278,72 @@ async function main() {
         ["preferred", "Docker"],
       ],
     },
+    {
+      id: "a0000000-0000-4000-8000-000000000104",
+      creation_key: "b0000000-0000-4000-8000-000000000104",
+      company: "Stellar Robotics",
+      job_title: "Full Stack Developer Co-op",
+      location: "Ottawa, ON",
+      country: "Canada",
+      work_arrangement: "Hybrid",
+      employment_type: "Co-op",
+      work_term_duration: "4 months",
+      deadline: "2026-07-01",
+      salary_text: "CAD 32/hr",
+      education_requirements: [],
+      years_of_experience: "0-2 years",
+      posting_url: null,
+      original_description:
+        "Stellar Robotics is hiring a Full Stack Developer Co-op to work on robotics dashboard tooling.",
+      responsibilities: ["Build dashboard features"],
+      qualifications: ["Experience with React"],
+      status: "offer",
+      skills: [],
+    },
+    {
+      id: "a0000000-0000-4000-8000-000000000105",
+      creation_key: "b0000000-0000-4000-8000-000000000105",
+      company: "Cedar Bank",
+      job_title: "Software Engineer Intern",
+      location: "Vancouver, BC",
+      country: "Canada",
+      work_arrangement: "On-site",
+      employment_type: "Internship",
+      work_term_duration: "8 months",
+      deadline: "2026-06-15",
+      salary_text: null,
+      education_requirements: [],
+      years_of_experience: null,
+      posting_url: "https://cedarbank.example.com/careers",
+      original_description:
+        "Cedar Bank is hiring a Software Engineer Intern for its payments platform team.",
+      responsibilities: ["Support payments platform features"],
+      qualifications: ["Java or TypeScript"],
+      status: "rejected",
+      skills: [],
+    },
+    {
+      id: "a0000000-0000-4000-8000-000000000106",
+      creation_key: "b0000000-0000-4000-8000-000000000106",
+      company: "Lakeside Media",
+      job_title: "Frontend Developer Co-op",
+      location: "Remote (Canada)",
+      country: "Canada",
+      work_arrangement: "Remote",
+      employment_type: "Co-op",
+      work_term_duration: "4 months",
+      deadline: "2026-08-01",
+      salary_text: "CAD 28/hr",
+      education_requirements: [],
+      years_of_experience: "0-2 years",
+      posting_url: null,
+      original_description:
+        "Lakeside Media is hiring a Frontend Developer Co-op to build streaming web experiences.",
+      responsibilities: ["Build streaming UI components"],
+      qualifications: ["Experience with TypeScript"],
+      status: "withdrawn",
+      skills: [],
+    },
   ];
 
   let skillCounter = 0;
@@ -327,16 +393,7 @@ async function main() {
       if (skillError) throw new Error(`Could not seed application skill: ${skillError.message}`);
     }
 
-    const events = [{ from_status: null, to_status: app.status }];
-    if (app.status === "applied") {
-      events.unshift({ from_status: "saved", to_status: "applied" });
-    } else if (app.status === "interview") {
-      events.unshift(
-        { from_status: null, to_status: "saved" },
-        { from_status: "saved", to_status: "applied" },
-        { from_status: "applied", to_status: "interview" },
-      );
-    }
+    const events = eventsForStatus(app.status);
     for (const [eventIndex, event] of events.entries()) {
       eventCounter += 1;
       const { error: eventError } = await admin.from("application_status_events").upsert(
@@ -373,6 +430,50 @@ async function main() {
   console.log("Seed complete. Log in with:");
   console.log(`  email:    ${demoEmail}`);
   console.log("  password: <SEED_DEMO_PASSWORD value>");
+}
+
+function eventsForStatus(status) {
+  switch (status) {
+    case "saved":
+      return [{ from_status: null, to_status: "saved" }];
+    case "preparing":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "preparing" },
+      ];
+    case "applied":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+      ];
+    case "interview":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+        { from_status: "applied", to_status: "interview" },
+      ];
+    case "offer":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+        { from_status: "applied", to_status: "interview" },
+        { from_status: "interview", to_status: "offer" },
+      ];
+    case "rejected":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+        { from_status: "applied", to_status: "rejected" },
+      ];
+    case "withdrawn":
+      return [
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+        { from_status: "applied", to_status: "withdrawn" },
+      ];
+    default:
+      return [{ from_status: null, to_status: "saved" }];
+  }
 }
 
 main().catch((error) => {

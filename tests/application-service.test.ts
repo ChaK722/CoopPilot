@@ -152,4 +152,56 @@ describe("createApplicationService", () => {
       kind: "not_found",
     });
   });
+
+  it("updates status through the controlled RPC with the provided date", async () => {
+    const supabase = mockSupabase({ rpc: [mockQueryResult("app-1")] });
+    const service = createApplicationService(supabase.client);
+
+    await service.updateStatus("user-a", "app-1", "applied", "2026-08-02");
+
+    const rpcCall = supabase.calls.find((call) => call.method === "rpc");
+    expect(rpcCall?.args[0]).toBe("update_application_status");
+    expect(rpcCall?.args[1]).toEqual(
+      expect.objectContaining({
+        p_user_id: "user-a",
+        p_application_id: "app-1",
+        p_to_status: "applied",
+        p_date_applied: "2026-08-02",
+      }),
+    );
+  });
+
+  it("treats a null status-update result as not found", async () => {
+    const supabase = mockSupabase({ rpc: [mockQueryResult(null)] });
+    const service = createApplicationService(supabase.client);
+
+    await expect(service.updateStatus("user-b", "app-of-a", "applied", null)).rejects.toMatchObject(
+      { kind: "not_found" },
+    );
+  });
+
+  it("archives and restores only owned applications", async () => {
+    const ok = mockSupabase({ maybeSingle: [mockQueryResult({ id: "app-1" })] });
+    await createApplicationService(ok.client).archiveApplication("user-a", "app-1");
+    const archiveUpdate = ok.calls.find((call) => call.method === "update");
+    expect((archiveUpdate?.args[0] as { archived_at: string }).archived_at).toEqual(
+      expect.any(String),
+    );
+
+    const restore = mockSupabase({ maybeSingle: [mockQueryResult({ id: "app-1" })] });
+    await createApplicationService(restore.client).restoreApplication("user-a", "app-1");
+    const restoreUpdate = restore.calls.find((call) => call.method === "update");
+    expect((restoreUpdate?.args[0] as { archived_at: null }).archived_at).toBeNull();
+  });
+
+  it("throws not found when archiving or restoring a foreign application", async () => {
+    const missing = mockSupabase({ maybeSingle: [mockQueryResult(null)] });
+    const service = createApplicationService(missing.client);
+    await expect(service.archiveApplication("user-b", "app-of-a")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+    await expect(service.restoreApplication("user-b", "app-of-a")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
 });

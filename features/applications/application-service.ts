@@ -167,6 +167,104 @@ export function createApplicationService(supabase: DbClient) {
       return data ?? [];
     },
 
+    /** Non-archived applications for the board, in stable column order. */
+    async listBoardApplications(userId: string) {
+      const { data, error } = await supabase
+        .from("applications")
+        .select("*")
+        .eq("user_id", userId)
+        .is("archived_at", null)
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: true })
+        .limit(LIST_LIMIT);
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not load your board. Please try again.",
+          error,
+        );
+      }
+      return data ?? [];
+    },
+
+    /** Archived applications for the Archive page (newest archive first). */
+    async listArchivedApplications(userId: string) {
+      const { data, error } = await supabase
+        .from("applications")
+        .select("*")
+        .eq("user_id", userId)
+        .not("archived_at", "is", null)
+        .order("archived_at", { ascending: false })
+        .limit(LIST_LIMIT);
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not load your archived applications. Please try again.",
+          error,
+        );
+      }
+      return data ?? [];
+    },
+
+    async updateStatus(
+      userId: string,
+      applicationId: string,
+      toStatus: ApplicationStatus,
+      dateApplied: string | null,
+    ) {
+      const { data, error } = await supabase.rpc("update_application_status", {
+        p_user_id: userId,
+        p_application_id: applicationId,
+        p_to_status: toStatus,
+        p_date_applied: dateApplied,
+      });
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not update the application status. Please try again.",
+          error,
+        );
+      }
+      if (!data) throw notFound();
+      return data as string;
+    },
+
+    async archiveApplication(userId: string, applicationId: string) {
+      const { data, error } = await supabase
+        .from("applications")
+        .update({ archived_at: new Date().toISOString() })
+        .eq("id", applicationId)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not archive the application. Please try again.",
+          error,
+        );
+      }
+      if (!data) throw notFound();
+    },
+
+    async restoreApplication(userId: string, applicationId: string) {
+      const { data, error } = await supabase
+        .from("applications")
+        .update({ archived_at: null })
+        .eq("id", applicationId)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+      if (error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not restore the application. Please try again.",
+          error,
+        );
+      }
+      if (!data) throw notFound();
+    },
+
     async createApplication(userId: string, input: CreateApplicationInput) {
       const skills = (input.skills ?? []).map((skill, index) => ({
         requirement_type: skill.requirement_type,

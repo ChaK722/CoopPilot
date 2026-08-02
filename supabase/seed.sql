@@ -222,6 +222,42 @@ cross join (
       array['Build REST APIs', 'Optimize database queries'],
       array['Experience with PostgreSQL', 'Experience with Node.js'],
       'interview'
+    ),
+    (
+      'a0000000-0000-4000-8000-000000000104'::uuid,
+      'b0000000-0000-4000-8000-000000000104'::uuid,
+      'Stellar Robotics', 'Full Stack Developer Co-op', 'Ottawa, ON', 'Canada',
+      'Hybrid', 'Co-op', '4 months', '2026-07-01'::date,
+      'CAD 32/hr', array[]::text[],
+      '0-2 years', null,
+      'Stellar Robotics is hiring a Full Stack Developer Co-op to work on robotics dashboard tooling.',
+      array['Build dashboard features'],
+      array['Experience with React'],
+      'offer'
+    ),
+    (
+      'a0000000-0000-4000-8000-000000000105'::uuid,
+      'b0000000-0000-4000-8000-000000000105'::uuid,
+      'Cedar Bank', 'Software Engineer Intern', 'Vancouver, BC', 'Canada',
+      'On-site', 'Internship', '8 months', '2026-06-15'::date,
+      null, array[]::text[],
+      null, 'https://cedarbank.example.com/careers',
+      'Cedar Bank is hiring a Software Engineer Intern for its payments platform team.',
+      array['Support payments platform features'],
+      array['Java or TypeScript'],
+      'rejected'
+    ),
+    (
+      'a0000000-0000-4000-8000-000000000106'::uuid,
+      'b0000000-0000-4000-8000-000000000106'::uuid,
+      'Lakeside Media', 'Frontend Developer Co-op', 'Remote (Canada)', 'Canada',
+      'Remote', 'Co-op', '4 months', '2026-08-01'::date,
+      'CAD 28/hr', array[]::text[],
+      '0-2 years', null,
+      'Lakeside Media is hiring a Frontend Developer Co-op to build streaming web experiences.',
+      array['Build streaming UI components'],
+      array['Experience with TypeScript'],
+      'withdrawn'
     )
 ) as v(
   id, creation_key, company, job_title, location, country,
@@ -283,7 +319,17 @@ cross join jsonb_array_elements('[
   {"id_num":2003,"application_id":"a0000000-0000-4000-8000-000000000102","from_status":"saved","to_status":"applied","seq":3},
   {"id_num":2004,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":null,"to_status":"saved","seq":4},
   {"id_num":2005,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":"saved","to_status":"applied","seq":5},
-  {"id_num":2006,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":"applied","to_status":"interview","seq":6}
+  {"id_num":2006,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":"applied","to_status":"interview","seq":6},
+  {"id_num":2007,"application_id":"a0000000-0000-4000-8000-000000000104","from_status":null,"to_status":"saved","seq":7},
+  {"id_num":2008,"application_id":"a0000000-0000-4000-8000-000000000104","from_status":"saved","to_status":"applied","seq":8},
+  {"id_num":2009,"application_id":"a0000000-0000-4000-8000-000000000104","from_status":"applied","to_status":"interview","seq":9},
+  {"id_num":2010,"application_id":"a0000000-0000-4000-8000-000000000104","from_status":"interview","to_status":"offer","seq":10},
+  {"id_num":2011,"application_id":"a0000000-0000-4000-8000-000000000105","from_status":null,"to_status":"saved","seq":11},
+  {"id_num":2012,"application_id":"a0000000-0000-4000-8000-000000000105","from_status":"saved","to_status":"applied","seq":12},
+  {"id_num":2013,"application_id":"a0000000-0000-4000-8000-000000000105","from_status":"applied","to_status":"rejected","seq":13},
+  {"id_num":2014,"application_id":"a0000000-0000-4000-8000-000000000106","from_status":null,"to_status":"saved","seq":14},
+  {"id_num":2015,"application_id":"a0000000-0000-4000-8000-000000000106","from_status":"saved","to_status":"applied","seq":15},
+  {"id_num":2016,"application_id":"a0000000-0000-4000-8000-000000000106","from_status":"applied","to_status":"withdrawn","seq":16}
 ]'::jsonb) as ev(item)
 where u.email = 'demo@cooppilot.local'
 on conflict (id) do update

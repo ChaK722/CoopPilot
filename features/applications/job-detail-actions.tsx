@@ -2,21 +2,30 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Pencil, Trash2 } from "lucide-react";
+import { Archive, Copy, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import {
+  archiveApplication,
   deleteApplication,
   duplicateApplication,
 } from "@/features/applications/application-actions";
 
-export function JobDetailActions({ applicationId }: { applicationId: string }) {
+export function JobDetailActions({
+  applicationId,
+  archived = false,
+}: {
+  applicationId: string;
+  archived?: boolean;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [duplicating, setDuplicating] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   async function handleDuplicate() {
     setDuplicating(true);
@@ -45,6 +54,20 @@ export function JobDetailActions({ applicationId }: { applicationId: string }) {
     router.refresh();
   }
 
+  async function handleArchive() {
+    setArchiving(true);
+    const result = await archiveApplication(applicationId);
+    setArchiving(false);
+    setArchiveOpen(false);
+    if (!result.ok) {
+      toast(result.error, "error");
+      return;
+    }
+    toast("Application archived.", "success");
+    router.replace("/applications");
+    router.refresh();
+  }
+
   return (
     <>
       <div className="flex flex-wrap gap-2">
@@ -60,6 +83,12 @@ export function JobDetailActions({ applicationId }: { applicationId: string }) {
           <Trash2 className="h-4 w-4" aria-hidden="true" />
           Delete
         </Button>
+        {!archived ? (
+          <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)}>
+            <Archive className="h-4 w-4" aria-hidden="true" />
+            Archive
+          </Button>
+        ) : null}
       </div>
       <ConfirmDialog
         open={confirmOpen}
@@ -69,6 +98,15 @@ export function JobDetailActions({ applicationId }: { applicationId: string }) {
         busy={deleting}
         onConfirm={handleDelete}
         onCancel={() => setConfirmOpen(false)}
+      />
+      <ConfirmDialog
+        open={archiveOpen}
+        title="Archive application?"
+        description="Archived applications are hidden from the board and table. You can restore them anytime from the Archive page."
+        confirmLabel="Archive"
+        busy={archiving}
+        onConfirm={handleArchive}
+        onCancel={() => setArchiveOpen(false)}
       />
     </>
   );

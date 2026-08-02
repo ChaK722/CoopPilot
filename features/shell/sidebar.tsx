@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, ListChecks, LogOut, PlusCircle, UserRound } from "lucide-react";
+import {
+  Archive,
+  KanbanSquare,
+  LayoutDashboard,
+  ListChecks,
+  LogOut,
+  PlusCircle,
+  UserRound,
+} from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/auth/supabase-browser";
 import { cn } from "@/lib/utils";
 import { CoopPilotLogo } from "@/components/brand/logo";
@@ -11,8 +19,10 @@ import { Button } from "@/components/ui/button";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/applications/board", label: "Board", icon: KanbanSquare },
   { href: "/applications", label: "Applications", icon: ListChecks },
   { href: "/applications/new", label: "Add Job", icon: PlusCircle },
+  { href: "/archive", label: "Archive", icon: Archive },
   { href: "/profile", label: "Profile", icon: UserRound },
 ];
 

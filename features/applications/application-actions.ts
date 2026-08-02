@@ -6,9 +6,11 @@ import { requireUser } from "@/lib/auth/route-guards";
 import { createServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { AppError, safeErrorMessage } from "@/lib/errors";
 import { idSchema } from "@/lib/validation/shared";
+import { optionalDate } from "@/lib/validation/shared";
 import {
   analysisInputSchema,
   applicationSchema,
+  applicationStatusSchema,
   createApplicationInputSchema,
   interviewSchema,
   notesSchema,
@@ -171,6 +173,56 @@ export async function deleteInterview(id: unknown): Promise<ActionResult> {
     const { user, service } = await getService();
     const deleted = await service.deleteInterview(user.id, idParsed.data);
     revalidatePath(`/applications/${deleted.application_id}`);
+    return { ok: true };
+  } catch (error) {
+    return toActionResult(error);
+  }
+}
+
+export async function updateApplicationStatus(
+  id: unknown,
+  status: unknown,
+  dateApplied: unknown,
+): Promise<ActionResult> {
+  const idParsed = idSchema.safeParse(id);
+  const statusParsed = applicationStatusSchema.safeParse(status);
+  const dateParsed = optionalDate.safeParse(dateApplied);
+  if (!idParsed.success || !statusParsed.success || !dateParsed.success) {
+    return { ok: false, error: "Invalid status update request." };
+  }
+  try {
+    const { user, service } = await getService();
+    await service.updateStatus(user.id, idParsed.data, statusParsed.data, dateParsed.data);
+    refreshApplicationPaths(idParsed.data);
+    return { ok: true };
+  } catch (error) {
+    return toActionResult(error);
+  }
+}
+
+export async function archiveApplication(id: unknown): Promise<ActionResult> {
+  const idParsed = idSchema.safeParse(id);
+  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  try {
+    const { user, service } = await getService();
+    await service.archiveApplication(user.id, idParsed.data);
+    refreshApplicationPaths(idParsed.data);
+    revalidatePath("/archive");
+    return { ok: true };
+  } catch (error) {
+    return toActionResult(error);
+  }
+}
+
+export async function restoreApplication(id: unknown): Promise<ActionResult> {
+  const idParsed = idSchema.safeParse(id);
+  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  try {
+    const { user, service } = await getService();
+    await service.restoreApplication(user.id, idParsed.data);
+    refreshApplicationPaths(idParsed.data);
+    revalidatePath("/archive");
+    revalidatePath("/applications/board");
     return { ok: true };
   } catch (error) {
     return toActionResult(error);

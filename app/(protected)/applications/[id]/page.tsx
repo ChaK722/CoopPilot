@@ -69,7 +69,7 @@ export default async function ApplicationDetailPage({ params }: PageProps) {
             {app.archived_at ? " · Archived" : ""}
           </p>
         </div>
-        <JobDetailActions applicationId={app.id} />
+        <JobDetailActions applicationId={app.id} archived={app.archived_at != null} />
       </header>
 
       <Card>

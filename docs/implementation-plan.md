@@ -435,6 +435,65 @@ Acceptance criteria:
 
 Phase 4 exit criterion: the complete seven-state lifecycle is usable and persistent on desktop and mobile, with reliable rollback and archive behavior.
 
+### Phase 4 verified status — 2026-08-02
+
+Status: **COMPLETE — implemented and verified** (all Phase 4 acceptance
+criteria pass; Phase 5 has not been started).
+
+Implemented:
+
+- 4A: `/applications/board` with the seven fixed columns; non-archived
+  applications only; per-column counts and usable empty states; cards show
+  company, job title, location, deadline, date applied, and textual status
+  (match score omitted entirely until Phase 5 exists — O-7 resolved); cards
+  link to the owning user's Job Detail; stable column order
+  `updated_at DESC, id ASC`.
+- 4B: `update_application_status` security-definer RPC (locks the row,
+  reads `from_status` from the database, validates the seven-status set,
+  appends exactly one event per real change, same-status requests are
+  no-ops, `auth.uid()` verified first, fixed `search_path`, no dynamic SQL,
+  Not Found via NULL return). Drag-and-drop via `@dnd-kit/core` with pointer
+  and keyboard sensors; every card also has a status selector (mobile and
+  desktop accessible alternative); optimistic moves with rollback, error
+  toast, and an `aria-live` announcement on failure. First move to Applied
+  with a null `date_applied` shows an optional prompt (enter date / Skip /
+  Cancel) committed in the same transaction (O-11 resolved); existing dates
+  are preserved and never auto-filled.
+- 4C: deadline rules implemented as pure functions (O-6 resolved: upcoming =
+  today through today+7 inclusive; expired = deadline < today using the
+  stored calendar date); Board shows an upcoming-deadline reminder strip and
+  cards show expired-unapplied warnings for Saved/Preparing only. Archive
+  action on Job Detail (confirmed), `/archive` page with empty/error states,
+  and Restore with success/failure feedback; archive sets `archived_at` only
+  and restore clears it, so applications return to their prior status;
+  archived applications disappear from Board, the default table, and the
+  upcoming reminder immediately.
+- Seed: demo user now has six applications covering saved, preparing
+  (via status moves), applied, interview, offer, rejected, and withdrawn.
+
+Verification evidence:
+
+- 190 automated tests pass, including: RPC tests on real embedded PostgreSQL
+  (seven-status transitions, exactly-one-event, database-sourced from_status,
+  same-status no-op, invalid status rejection, cross-user and Not Found
+  semantics, append-only enforcement, date_applied input/skip/preserve, rapid
+  sequential updates), archive/restore RLS and persistence tests, deadline
+  boundary tests (yesterday/today/day 7/day 8/null/status matrix), board
+  component tests (single-column placement, counts, empty states, detail
+  links, optimistic change, rollback + live-region announcement, applied date
+  prompt save/skip/cancel, no re-prompt with existing date), and service
+  layer tests.
+- `npm run verify` and `npm run build` pass locally and on Ubuntu CI.
+- Headless-browser acceptance at 375/768/1280px: seven-column board renders,
+  status changes persist after refresh, status history appends correctly,
+  archive removes from board/table, archive page lists it, restore returns it
+  to its original column, deadline warnings render, and no console errors.
+
+Documented decisions: O-6, O-7, and O-11 are resolved in
+`docs/requirements.md` Appendix A.
+
+Phase 5 has not been started. No out-of-scope feature was added.
+
 ## 6. Phase 5 — AI job-preparation features
 
 ### 5A. AI run infrastructure and provider hardening
