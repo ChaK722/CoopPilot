@@ -26,3 +26,13 @@ export function formatDate(value: string | Date): string {
     dateStyle: "medium",
   }).format(toDate(value));
 }
+
+/** Deterministic "Aug 2026" label for an analytics "YYYY-MM" month key. */
+export function formatMonthLabel(month: string): string {
+  const [year, monthIndex] = month.split("-");
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(Number(year), Number(monthIndex) - 1, 1)));
+}

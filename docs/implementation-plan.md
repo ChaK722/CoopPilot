@@ -823,6 +823,109 @@ Acceptance criteria:
 
 Phase 6 exit criterion: every Dashboard and Analytics value is reproducible from persisted application data and behaves correctly with zero records.
 
+### Phase 6 implemented — 2026-08-02
+
+Status: **COMPLETE — implemented and verified** (6A and 6B; Phase 7 has not
+been started).
+
+Decisions recorded (also in `docs/requirements.md` Appendix A):
+
+- **O-4 Resolved** — applications requiring action uses persisted-only
+  rules: Priority 1 "Deadline passed" (Saved/Preparing, deadline < today)
+  and Priority 2 "Apply before deadline" (Saved/Preparing, today <= deadline
+  <= today + 3). One entry per application (highest priority), ordered by
+  priority/deadline/updated_at desc/id, capped at 5.
+- **O-8 Resolved** — Interviews and Offers count unique non-archived
+  applications that ever reached the stage through status history, not
+  interview-event counts; later Rejected/Withdrawn statuses do not remove
+  them.
+- **O-12 Resolved** — submitted-over-time includes only applied-denominator
+  applications; the analytics submission date is stored `date_applied` when
+  present, otherwise the earliest applied-stage status event converted to
+  America/Toronto calendar date; `created_at` is never used; the derived
+  date is never written back.
+
+Database (additive migration `20260802000008_phase6_analytics.sql`):
+
+- `get_application_analytics(p_user_id uuid, p_today date)` returns one
+  structured `jsonb` snapshot (`summary`, `status_counts`,
+  `submissions_over_time`, `top_skills`, `upcoming_deadlines`,
+  `recently_updated`, `requiring_action`). Security-definer, fixed
+  `search_path = public`, first-line `auth.uid()` check, no dynamic SQL;
+  `p_today` only affects time windows. ACL: no PUBLIC/anon, authenticated
+  only (catalog-tested).
+- `get_board_match_scores(p_user_id uuid)` returns the latest
+  `match_analyses` score per non-archived application in one bounded batch
+  read (`distinct on`, `generated_at desc, id desc`), same ACL pattern.
+- New index `application_status_events_user_to_changed_idx
+(user_id, to_status, changed_at)` supports funnel reach and earliest
+  applied-stage events. Existing indexes cover board, deadlines, recent
+  activity, date_applied, skills, and match snapshots; `EXPLAIN` checks
+  recorded in `docs/database-schema.md`.
+
+Application layer:
+
+- `features/analytics/` — `analytics-types.ts`, `analytics-schema.ts`
+  (Zod, validates the full snapshot including the fixed 7 status counts and
+  list caps), `analytics-service.ts` (exactly one RPC per page load, safe
+  `AppError` mapping, never trusts the JSON shape), and accessible semantic
+  chart/list components (`summary-cards`, `status-chart`,
+  `submissions-chart`, `skills-chart`, `action-lists`,
+  `analytics-error-card`). No chart dependency was added: semantic
+  HTML/CSS bars with visible labels/values, `figure`/`figcaption`, no
+  hover-only values, and text alternatives satisfy the accessibility
+  requirements without a chart library.
+- `/dashboard` is now the real dashboard (summary cards, compact charts,
+  action lists, zero-data "Add your first job" state, safe error card with
+  retry, skeleton `loading.tsx`).
+- `/analytics` (new, added to desktop and mobile navigation) uses the same
+  service/snapshot, adds most-requested-skills and plain-language
+  explanations of denominator/rates/submission fallback, with its own
+  skeleton `loading.tsx`.
+- Board: `BoardApplication.latest_match_score` added; the board page loads
+  rows plus one batch score RPC (never per-card), cards show
+  `Match: n/100` only when a score exists, and archived applications stay
+  excluded. Status/archive/create actions revalidate dashboard, analytics,
+  and board paths.
+
+Verification evidence:
+
+- New real-PostgreSQL `tests/analytics-rpc.test.ts`: fixed 11+1 application
+  fixture verifying summary/status counts/rates/submissions/skills/lists,
+  denominator semantics, history-based interviews/offers, archive exclusion
+  and re-inclusion, Toronto cross-midnight submission dates, `date_applied`
+  priority, no `created_at` fallback, top-10 truncation and tie-breakers,
+  zero-data snapshot, forged `p_user_id` rejection, ACL matrix, and the
+  board score RPC.
+- New `tests/analytics-service.test.ts` (one RPC, Zod rejection, safe error
+  mapping, null-rate preservation) and `tests/analytics-components.test.tsx`
+  (cards, rate `—`, chart accessibility, list ordering/links, error card
+  without detail leaks, script-like text as plain text).
+- Board tests extended for score display/omission; application-service test
+  proves exactly two bounded reads (no per-card query).
+- Full suite: **352/352 automated tests pass** (33 files) locally;
+  `npm run typecheck`, `npm run lint`, `npm run format:check`, and
+  `npm run build` pass. Ubuntu CI results are recorded below after push.
+- Browser acceptance (headless Chromium at 375/768/1280 px) verifies the
+  dashboard and `/analytics` reconcile with fixed fixture data, archive/
+  restore/status changes update metrics, board shows the latest match score,
+  no horizontal overflow, no console errors, and no hydration warnings;
+  details are recorded with the CI evidence below. The fixture run (12
+  applications with controlled status histories, deadlines, skills, and
+  `date_applied` values) reconciled every summary card, the status chart
+  total, the submission months, and the skill chart exactly; archiving
+  removed the record from every metric/list and restore re-included it;
+  moving an application to Applied and back left the applied denominator
+  and rates unchanged (history-based); a UI-generated match appeared on the
+  board card while a card without a match omitted the row; the zero-data
+  account showed "Add your first job" and `—` rates; all three viewports
+  had no horizontal overflow; keyboard Tab reached the primary links; and
+  there were zero console errors and zero hydration warnings.
+
+Phase 7 (responsive/accessibility audit, reliability/security/performance
+audit, Playwright end-to-end, and deployment) has not been started. No
+out-of-scope feature was added.
+
 ## 8. Phase 7 — Quality and deployment
 
 ### 7A. Responsive and accessibility audit

@@ -32,6 +32,7 @@ export interface BoardApplication {
   location: string | null;
   deadline: string | null;
   date_applied: string | null;
+  latest_match_score: number | null;
   status: ApplicationStatus;
   updated_at: string;
   archived_at: string | null;
@@ -394,6 +395,9 @@ function BoardCard({
         {app.location ?? "No location"} · Applied: {app.date_applied ?? "—"}
       </p>
       <p className="mt-0.5 text-xs text-muted-foreground">Deadline: {app.deadline ?? "—"}</p>
+      {app.latest_match_score != null ? (
+        <p className="mt-0.5 text-xs text-muted-foreground">Match: {app.latest_match_score}/100</p>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-center gap-1.5">
         <span className="inline-flex rounded-full border border-border px-2 py-0.5 text-[11px] font-medium">
           {APPLICATION_STATUS_LABELS[app.status]}

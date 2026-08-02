@@ -67,6 +67,50 @@ const VALID_INPUT = {
 };
 
 describe("createApplicationService", () => {
+  it("loads board rows and latest match scores in exactly two bounded reads", async () => {
+    const supabase = mockSupabase({
+      chainResult: [
+        mockQueryResult([
+          {
+            id: "app-1",
+            company: "Alpha",
+            job_title: "Intern",
+            status: "saved",
+            updated_at: "2026-08-02T00:00:00.000Z",
+            archived_at: null,
+          },
+          {
+            id: "app-2",
+            company: "Beta",
+            job_title: "Co-op",
+            status: "applied",
+            updated_at: "2026-08-01T00:00:00.000Z",
+            archived_at: null,
+          },
+        ]),
+      ],
+      rpc: [
+        mockQueryResult([
+          { application_id: "app-1", overall_score: 78 },
+          { application_id: "app-3", overall_score: 99 },
+        ]),
+      ],
+    });
+    const service = createApplicationService(supabase.client);
+
+    const rows = await service.listBoardWithScores("user-a");
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].latest_match_score).toBe(78);
+    expect(rows[1].latest_match_score).toBeNull();
+    // One applications query plus one batch RPC: no per-card match queries.
+    expect(supabase.mocks.from).toHaveBeenCalledTimes(1);
+    expect(supabase.mocks.rpc).toHaveBeenCalledWith("get_board_match_scores", {
+      p_user_id: "user-a",
+    });
+    expect(supabase.calls.some((call) => call.method === "maybeSingle")).toBe(false);
+  });
+
   it("creates an application through the transactional RPC with normalized skills", async () => {
     const supabase = mockSupabase({ rpc: [mockQueryResult("app-1")] });
     const service = createApplicationService(supabase.client);

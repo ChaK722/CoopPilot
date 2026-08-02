@@ -7,6 +7,7 @@ import type {
   CreateApplicationInput,
   InterviewValues,
 } from "@/lib/validation/applications";
+import type { BoardApplication } from "@/features/applications/board";
 
 const LIST_LIMIT = 200;
 
@@ -185,6 +186,43 @@ export function createApplicationService(supabase: DbClient) {
         );
       }
       return data ?? [];
+    },
+
+    /**
+     * Board rows plus their latest match score. Exactly two bounded reads:
+     * the application rows and one batch RPC that returns the latest
+     * match_analyses score per non-archived application - never a per-card
+     * query.
+     */
+    async listBoardWithScores(userId: string): Promise<BoardApplication[]> {
+      const [rowsResult, scoresResult] = await Promise.all([
+        supabase
+          .from("applications")
+          .select("*")
+          .eq("user_id", userId)
+          .is("archived_at", null)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: true })
+          .limit(LIST_LIMIT),
+        supabase.rpc("get_board_match_scores", { p_user_id: userId }),
+      ]);
+      if (rowsResult.error || scoresResult.error) {
+        throw new AppError(
+          "database_unavailable",
+          "Could not load your board. Please try again.",
+          rowsResult.error ?? scoresResult.error,
+        );
+      }
+      const scores = new Map<string, number>(
+        (scoresResult.data ?? []).map((row: { application_id: string; overall_score: number }) => [
+          row.application_id as string,
+          row.overall_score as number,
+        ]),
+      );
+      return (rowsResult.data ?? []).map((row) => ({
+        ...row,
+        latest_match_score: scores.get(row.id as string) ?? null,
+      }));
     },
 
     /** Archived applications for the Archive page (newest archive first). */

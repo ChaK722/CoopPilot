@@ -17,7 +17,7 @@ export default async function BoardPage() {
 
   let rows: BoardApplication[];
   try {
-    rows = (await service.listBoardApplications(user.id)) as BoardApplication[];
+    rows = await service.listBoardWithScores(user.id);
   } catch {
     return (
       <div className="flex flex-col items-start gap-3">

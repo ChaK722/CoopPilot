@@ -26,6 +26,7 @@ function app(overrides: Partial<BoardApplication>): BoardApplication {
     location: "Toronto",
     deadline: null,
     date_applied: null,
+    latest_match_score: null,
     status: "saved",
     updated_at: "2026-08-02T00:00:00.000Z",
     archived_at: null,
@@ -123,6 +124,33 @@ describe("ApplicationBoard", () => {
       renderBoard([app({ id: "a", deadline: "2026-08-01", status: "applied" })]);
       expect(screen.queryByText("Deadline passed")).not.toBeInTheDocument();
       expect(within(column("Applied")).getByText("Deadline: 2026-08-01")).toBeInTheDocument();
+    });
+  });
+
+  describe("latest match score", () => {
+    it("shows the latest match score when one exists", () => {
+      renderBoard([app({ id: "a", latest_match_score: 78 })]);
+      expect(screen.getByText("Match: 78/100")).toBeInTheDocument();
+    });
+
+    it("shows a real score of zero but omits the row entirely when there is no score", () => {
+      renderBoard([
+        app({ id: "a", company: "Alpha", latest_match_score: null }),
+        app({ id: "b", company: "Beta", latest_match_score: 0 }),
+      ]);
+      expect(screen.getByText("Match: 0/100")).toBeInTheDocument();
+      expect(screen.queryByText(/Match:/)).not.toBeNull();
+      const alphaCard = screen.getByRole("link", { name: /Alpha/ }).closest("div");
+      expect(alphaCard?.textContent).not.toContain("Match:");
+    });
+
+    it("keeps multiple cards independent", () => {
+      renderBoard([
+        app({ id: "a", company: "Alpha", latest_match_score: 78 }),
+        app({ id: "b", company: "Beta", latest_match_score: 42 }),
+      ]);
+      expect(screen.getByText("Match: 78/100")).toBeInTheDocument();
+      expect(screen.getByText("Match: 42/100")).toBeInTheDocument();
     });
   });
 

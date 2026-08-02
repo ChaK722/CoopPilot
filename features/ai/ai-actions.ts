@@ -31,6 +31,7 @@ async function getService() {
 
 function refreshDetail(applicationId: string) {
   revalidatePath(`/applications/${applicationId}`);
+  revalidatePath("/applications/board");
 }
 
 export async function generateMatchAnalysis(

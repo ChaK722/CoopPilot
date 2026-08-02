@@ -391,3 +391,115 @@ Full-text application search may use a PostgreSQL generated `tsvector` over comp
 - Interview rate is applications that ever reached Interview divided by total applied applications.
 - Offer rate is applications that ever reached Offer divided by total applied applications.
 - Saved and Preparing do not enter the applied denominator.
+
+## 11. Analytics RPC and snapshot (Phase 6)
+
+`get_application_analytics(p_user_id uuid, p_today date)` returns a single
+`jsonb` snapshot used by both Dashboard and `/analytics` (one RPC per page
+load):
+
+```json
+{
+  "summary": {
+    "total": 0,
+    "active": 0,
+    "interviews": 0,
+    "offers": 0,
+    "applied_denominator": 0,
+    "upcoming_deadlines": 0,
+    "interview_rate": null,
+    "offer_rate": null
+  },
+  "status_counts": [{ "status": "saved", "count": 0 }, "...7 fixed statuses"],
+  "submissions_over_time": [{ "month": "2026-07", "count": 3 }],
+  "top_skills": [
+    {
+      "normalized_name": "...",
+      "name": "...",
+      "total_count": 0,
+      "required_count": 0,
+      "preferred_count": 0
+    }
+  ],
+  "upcoming_deadlines": [
+    { "id": "...", "company": "...", "job_title": "...", "deadline": "...", "updated_at": "..." }
+  ],
+  "recently_updated": [
+    { "id": "...", "company": "...", "job_title": "...", "status": "...", "updated_at": "..." }
+  ],
+  "requiring_action": [
+    {
+      "id": "...",
+      "company": "...",
+      "job_title": "...",
+      "status": "...",
+      "deadline": "...",
+      "updated_at": "...",
+      "reason": "..."
+    }
+  ]
+}
+```
+
+Semantics (identical to `docs/requirements.md` DASH-2/DASH-4 and Appendix A
+O-4/O-8/O-12):
+
+- Base set is always `user_id = p_user_id AND archived_at IS NULL`.
+- Total counts every base application; Active = current status in
+  saved/preparing/applied/interview; Interviews/Offers = unique base
+  applications with any history event `to_status = interview`/`offer`;
+  applied denominator = unique base applications with any history event
+  `to_status IN (applied, interview, offer, rejected, withdrawn)`.
+- Rates are `round(100 * numerator / denominator, 1)` and `null` when the
+  denominator is zero.
+- Upcoming deadlines = saved/preparing with
+  `p_today <= deadline <= p_today + 7`; the list orders by
+  deadline/company/id and is capped at 5.
+- Requiring action = saved/preparing with an expired deadline (priority 1,
+  "Deadline passed") or a deadline within 3 days (priority 2, "Apply before
+  deadline"), ordered by priority/deadline/updated_at desc/id, capped at 5.
+- Submission dates: stored `date_applied` first; otherwise the earliest
+  applied-stage event converted with `changed_at AT TIME ZONE
+'America/Toronto'`; months aggregate as `YYYY-MM` ascending with no fake
+  months.
+- Top skills: distinct non-archived applications per `normalized_name`
+  (required and preferred), deterministic `min(name)` display, ordered by
+  total/required/preferred, capped at 10.
+
+`get_board_match_scores(p_user_id uuid)` returns
+`(application_id, overall_score)` for the latest `match_analyses` snapshot
+per non-archived application (`distinct on (application_id)` ordered by
+`generated_at desc, id desc`), giving the board one bounded batch read
+instead of a per-card query.
+
+Both functions are `security definer` with `set search_path = public`, verify
+`p_user_id IS NOT DISTINCT FROM auth.uid()` first, use no dynamic SQL, and
+grant EXECUTE only to `authenticated` (PUBLIC and anon revoked).
+
+Analytics indexes added by `20260802000008_phase6_analytics.sql`:
+
+- `application_status_events_user_to_changed_idx
+(user_id, to_status, changed_at)` — funnel reach and earliest
+  applied-stage event ordering.
+
+Existing indexes already cover the remaining analytics paths:
+
+- `applications_owner_status_idx (user_id, archived_at, status)` — total,
+  active, and status counts.
+- `applications_owner_deadline_idx (user_id, deadline)` — upcoming/action
+  windows.
+- `applications_owner_updated_idx (user_id, updated_at desc)` — recently
+  updated.
+- `applications_owner_date_applied_idx (user_id, date_applied)` — submission
+  date reads.
+- `application_skills_owner_normalized_idx
+(user_id, normalized_name, requirement_type)` — skill aggregation.
+- `match_analyses_application_generated_idx (application_id, generated_at
+desc)` — latest match score (the board RPC adds the `id` tie-breaker in
+  the sort, not an index).
+
+`EXPLAIN` checks against the embedded PostgreSQL fixture show index scans on
+the base application filter for status/deadline/updated queries, and the
+per-user event index for funnel and earliest-event lookups; list subqueries
+apply `LIMIT` inside the aggregation so result rows are bounded regardless
+of dataset size.

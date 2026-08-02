@@ -38,6 +38,9 @@ async function getService() {
 
 function refreshApplicationPaths(id?: string) {
   revalidatePath("/applications");
+  revalidatePath("/applications/board");
+  revalidatePath("/dashboard");
+  revalidatePath("/analytics");
   if (id) {
     revalidatePath(`/applications/${id}`);
     revalidatePath(`/applications/${id}/edit`);

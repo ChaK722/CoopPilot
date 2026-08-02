@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Archive,
+  BarChart3,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/applications/board", label: "Board", icon: KanbanSquare },
   { href: "/applications", label: "Applications", icon: ListChecks },
   { href: "/applications/new", label: "Add Job", icon: PlusCircle },
+  { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/profile", label: "Profile", icon: UserRound },
 ];

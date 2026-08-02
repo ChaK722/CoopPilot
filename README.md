@@ -5,7 +5,7 @@ job seekers: profile management, job extraction, application tracking, AI
 match analysis, cover letters, interview preparation, and analytics — all
 usable without an external AI API key (Demo Mode).
 
-> Status: **Phases 1–5 implemented.** Phase 1: public pages, protected
+> Status: **Phases 1–6 implemented.** Phase 1: public pages, protected
 > application shell, Supabase authentication, RLS-protected profile baseline,
 > repeatable demo seed. Phase 2: complete user profile (basic information,
 > preferences, education, skills, experience, projects). Phase 3: job
@@ -20,8 +20,12 @@ usable without an external AI API key (Demo Mode).
 > preparation, all running deterministically in Demo Mode with idempotent
 > AI-run records. Demo Mode is the implemented mode for the MVP; an external
 > AI provider adapter is a documented, explicitly deferred item (no external
-> key is configured or claimed). Later phases (analytics, deployment) are
-> tracked in `docs/implementation-plan.md`.
+> key is configured or claimed). Phase 6: dashboard and analytics — seven
+> summary metrics, applications-by-status/submitted-over-time/most-requested-
+> skills charts, upcoming/recent/requiring-action lists, and a detailed
+> `/analytics` page, all backed by one database analytics snapshot RPC; the
+> board also shows each card's latest match score. Phase 7 (quality audit and
+> deployment) is tracked in `docs/implementation-plan.md`.
 
 ## Development environment and CI
 
@@ -121,6 +125,23 @@ name` is required. Completing onboarding is never required to add or
   education, skills (Enter to add, × to remove), work experience, and
   projects. Reorder lists with the up/down buttons; deletions require
   confirmation.
+
+## Dashboard and analytics
+
+- `/dashboard` — seven summary cards (total, active, interviews, offers,
+  upcoming deadlines, interview rate, offer rate), compact status and
+  submission charts, upcoming deadlines, recently updated applications, and
+  applications requiring action, plus an explicit zero-data state.
+- `/analytics` — the same single analytics snapshot with the full breakdown:
+  status chart, submissions-over-time chart, most-requested-skills chart,
+  and plain-language explanations of the denominator, rates, and submission
+  date fallback.
+
+Metric definitions are recorded in `docs/requirements.md` (DASH-1 through
+DASH-6 and Appendix A O-4/O-8/O-12). All values come from one
+`get_application_analytics` RPC per page load; archived applications are
+always excluded, and rates are `—` when no application has ever reached the
+applied stage.
 
 ## Project layout
 
