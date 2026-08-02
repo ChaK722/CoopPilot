@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
+import { formatDateTime } from "@/lib/dates";
 import { createInterview, deleteInterview } from "@/features/applications/application-actions";
 
 export interface InterviewRow {
@@ -95,7 +96,7 @@ export function InterviewSection({
                 <p className="text-sm font-medium">
                   {interview.interview_type} —{" "}
                   <time dateTime={interview.scheduled_at}>
-                    {new Date(interview.scheduled_at).toLocaleString()}
+                    {formatDateTime(interview.scheduled_at)}
                   </time>
                 </p>
                 {interview.location_or_link ? (

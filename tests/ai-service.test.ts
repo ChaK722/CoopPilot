@@ -239,6 +239,167 @@ describe("createAIService", () => {
     expect(provider.analyzeMatch).not.toHaveBeenCalled();
   });
 
+  it("maps a not_found create_ai_run result to a safe not-found error", async () => {
+    const supabase = mockSupabase({
+      rpc: [
+        {
+          data: [
+            {
+              id: null,
+              status: "not_found",
+              created: false,
+              safe_error_message: "The application was not found or is not yours.",
+            },
+          ],
+          error: null,
+        },
+      ],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateMatchAnalysis("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({
+      kind: "not_found",
+      safeMessage: "The application was not found or is not yours.",
+    });
+    expect(provider.analyzeMatch).not.toHaveBeenCalled();
+    expect(supabase.calls.some((call) => call.method === "maybeSingle")).toBe(false);
+  });
+
+  it("never uses a null run id for provider calls or result reads", async () => {
+    const supabase = mockSupabase({
+      rpc: [
+        {
+          data: [{ id: null, status: "succeeded", created: false, safe_error_message: null }],
+          error: null,
+        },
+      ],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateMatchAnalysis("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({ kind: "unexpected" });
+    expect(provider.analyzeMatch).not.toHaveBeenCalled();
+    expect(supabase.calls.some((call) => call.method === "maybeSingle")).toBe(false);
+  });
+
+  it("maps an idempotency key conflict to a safe conflict error", async () => {
+    const supabase = mockSupabase({
+      rpc: [
+        {
+          data: null,
+          error: {
+            message: "idempotency key conflicts with a different request",
+            code: "P0001",
+          },
+        },
+      ],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateMatchAnalysis("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({ kind: "conflict" });
+    expect(provider.analyzeMatch).not.toHaveBeenCalled();
+  });
+
+  it("reports a consistency error when a succeeded match run has no result", async () => {
+    const supabase = mockSupabase({
+      rpc: [{ data: runRow("succeeded", false), error: null }],
+      maybeSingle: [{ data: null, error: null }],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateMatchAnalysis("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({
+      kind: "unexpected",
+      safeMessage: "The saved analysis is missing or inconsistent. Please try again.",
+    });
+    expect(provider.analyzeMatch).not.toHaveBeenCalled();
+  });
+
+  it("reports a consistency error when a succeeded cover letter run has no result", async () => {
+    const supabase = mockSupabase({
+      rpc: [{ data: runRow("succeeded", false), error: null }],
+      maybeSingle: [{ data: null, error: null }],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateCoverLetter("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({
+      kind: "unexpected",
+      safeMessage: "The saved cover letter is missing or inconsistent. Please try again.",
+    });
+    expect(provider.generateCoverLetter).not.toHaveBeenCalled();
+  });
+
+  it("reports a consistency error when a succeeded interview prep run is missing a part", async () => {
+    const supabase = mockSupabase({
+      rpc: [{ data: runRow("succeeded", false), error: null }],
+      maybeSingle: [
+        { data: { id: "b1" }, error: null },
+        { data: null, error: null },
+        { data: { id: "r1" }, error: null },
+      ],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.generateInterviewPrep("user-a", "app-1", "11111111-1111-4111-8111-111111111111"),
+    ).rejects.toMatchObject({
+      kind: "unexpected",
+      safeMessage:
+        "The saved interview preparation is incomplete or inconsistent. Please try again.",
+    });
+    expect(provider.generateInterviewPrep).not.toHaveBeenCalled();
+  });
+
+  it("reports a consistency error when a succeeded extraction run has a null result", async () => {
+    const supabase = mockSupabase({
+      rpc: [{ data: runRow("succeeded", false), error: null }],
+      maybeSingle: [{ data: { result_json: null }, error: null }],
+    });
+    const service = createAIService(supabase.client);
+
+    await expect(
+      service.analyzeJob(
+        "user-a",
+        { description: "Job text", url: null },
+        "11111111-1111-4111-8111-111111111111",
+      ),
+    ).rejects.toMatchObject({
+      kind: "unexpected",
+      safeMessage: "The saved analysis is missing or inconsistent. Please try again.",
+    });
+    expect(provider.extractJob).not.toHaveBeenCalled();
+  });
+
+  it("returns the run-bound cover letter for a succeeded retry", async () => {
+    const supabase = mockSupabase({
+      rpc: [{ data: runRow("succeeded", false), error: null }],
+      maybeSingle: [
+        {
+          data: { id: "doc-1", content_text: "Draft", document_type: "cover_letter" },
+          error: null,
+        },
+      ],
+    });
+    const service = createAIService(supabase.client);
+
+    const result = await service.generateCoverLetter(
+      "user-a",
+      "app-1",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(result.id).toBe("doc-1");
+    expect(provider.generateCoverLetter).not.toHaveBeenCalled();
+  });
+
   it("marks the run failed when provider output is schema-invalid", async () => {
     const supabase = mockSupabase({
       rpc: [

@@ -39,6 +39,7 @@ describe("Phase 5 hardening: concurrency, binding, idempotency, atomicity", () =
   let userB: string;
   let appA: string;
   let appB: string;
+  let appA2: string;
 
   beforeAll(async () => {
     ctx = await startTestPostgres();
@@ -58,18 +59,57 @@ describe("Phase 5 hardening: concurrency, binding, idempotency, atomicity", () =
       );
     appA = (await appOf(userA, "Alpha Co")).rows[0].create_application;
     appB = (await appOf(userB, "Beta Co")).rows[0].create_application;
+    appA2 = (await appOf(userA, "Alpha Second Co")).rows[0].create_application;
   }, 180_000);
 
   afterAll(async () => {
     await ctx.stop();
   }, 120_000);
 
-  async function createRun(user: string, app: string | null, operation: string, key: string) {
+  async function createRun(
+    user: string,
+    app: string | null,
+    operation: string,
+    key: string,
+    mode = "demo",
+  ) {
     const appSql = app === null ? "null" : `'${app}'`;
     return asUser(
       ctx.port,
       user,
-      `select * from public.create_ai_run('${user}', ${appSql}, '${operation}', '${key}', 'demo')`,
+      `select * from public.create_ai_run('${user}', ${appSql}, '${operation}', '${key}', '${mode}')`,
+    );
+  }
+
+  async function nextDocumentVersion(
+    admin: typeof ctx.admin,
+    appId: string,
+    documentType: string,
+  ): Promise<number> {
+    const { rows } = await admin.query(
+      `select coalesce(max(version), 0) + 1 as v
+       from public.generated_documents
+       where application_id = $1 and document_type = $2`,
+      [appId, documentType],
+    );
+    return Number(rows[0].v);
+  }
+
+  async function bindDocument(
+    admin: typeof ctx.admin,
+    userId: string,
+    appId: string,
+    runId: string,
+    documentType: string,
+    version: number,
+    contentJson: string,
+  ) {
+    await admin.query(
+      `insert into public.generated_documents (
+         user_id, application_id, ai_run_id, document_type, version, content_json,
+         generation_mode, user_edited
+       ) values ($1, $2, $3, $4, $5, $6::jsonb, 'demo', false)`,
+      [userId, appId, runId, documentType, version, contentJson],
     );
   }
 
@@ -77,6 +117,7 @@ describe("Phase 5 hardening: concurrency, binding, idempotency, atomicity", () =
     const result = await createRun(userB, appA, "match_analysis", KEY_A);
     expect(result.rows[0].created).toBe(false);
     expect(result.rows[0].status).toBe("not_found");
+    expect(result.rows[0].id).toBeNull();
   });
 
   it("requires an application for non-extraction operations", async () => {
@@ -448,5 +489,367 @@ describe("Phase 5 hardening: concurrency, binding, idempotency, atomicity", () =
          )`,
       ),
     ).rejects.toThrow(/row-level security|permission denied|unique/i);
+  });
+
+  it("rejects an idempotency key reused for a different application", async () => {
+    const key = "f1111111-1111-4111-8111-111111111111";
+    const first = await createRun(userA, appA, "match_analysis", key);
+    expect(first.rows[0].created).toBe(true);
+
+    await expect(createRun(userA, appA2, "match_analysis", key)).rejects.toThrow(
+      /idempotency key conflicts with a different request/i,
+    );
+
+    const count = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.ai_runs where idempotency_key = '${key}'`,
+    );
+    expect(count.rows[0].count).toBe("1");
+    const secondAppRuns = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.ai_runs where application_id = '${appA2}'`,
+    );
+    expect(secondAppRuns.rows[0].count).toBe("0");
+  });
+
+  it("rejects an idempotency key reused with a different generation mode", async () => {
+    const key = "f2222222-2222-4222-8222-222222222222";
+    const first = await createRun(userA, appA, "cover_letter", key, "demo");
+    expect(first.rows[0].created).toBe(true);
+
+    await expect(createRun(userA, appA, "cover_letter", key, "external")).rejects.toThrow(
+      /idempotency key conflicts with a different request/i,
+    );
+
+    const count = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.ai_runs where idempotency_key = '${key}'`,
+    );
+    expect(count.rows[0].count).toBe("1");
+  });
+
+  it("scopes idempotency keys per operation so cross-operation reuse cannot corrupt results", async () => {
+    const key = "f2345678-2345-4234-8234-234523452345";
+    const extraction = await createRun(userA, null, "job_extraction", key);
+    expect(extraction.rows[0].created).toBe(true);
+
+    // The unique key is (user_id, operation, idempotency_key), so the same
+    // key under a different operation creates a separate run instead of
+    // reusing the job-extraction result.
+    const match = await createRun(userA, appA, "match_analysis", key);
+    expect(match.rows[0].created).toBe(true);
+    expect(match.rows[0].id).not.toBe(extraction.rows[0].id);
+
+    const runs = await asUser(
+      ctx.port,
+      userA,
+      `select operation from public.ai_runs where idempotency_key = '${key}' order by operation`,
+    );
+    expect(runs.rows.map((row) => row.operation)).toEqual(["job_extraction", "match_analysis"]);
+  });
+
+  it("concurrent same-key requests for different applications fail instead of reusing the winner", async () => {
+    const key = "f3333333-3333-4333-8333-333333333333";
+    const [first, second] = await Promise.allSettled([
+      createRun(userA, appA, "match_analysis", key),
+      createRun(userA, appA2, "match_analysis", key),
+    ]);
+    const fulfilled = first.status === "fulfilled" ? first : second;
+    const rejected = first.status === "rejected" ? first : second;
+
+    expect(fulfilled.status).toBe("fulfilled");
+    if (fulfilled.status !== "fulfilled") return;
+    expect(fulfilled.value.rows[0].created).toBe(true);
+
+    expect(rejected.status).toBe("rejected");
+    if (rejected.status !== "rejected") return;
+    expect(String(rejected.reason)).toMatch(/idempotency key conflicts with a different request/i);
+
+    const runs = await asUser(
+      ctx.port,
+      userA,
+      `select application_id from public.ai_runs where idempotency_key = '${key}'`,
+    );
+    expect(runs.rows).toHaveLength(1);
+  });
+
+  it("rejects saving a match for a succeeded run with no bound result", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "match_analysis",
+      "f4444444-4444-4444-8444-444444444444",
+    );
+    const runId = run.rows[0].id;
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_match_analysis('${userA}', '${appA}', '${runId}', ${ANALYSIS_JSON()}, 'demo')`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: match result missing/i);
+
+    const count = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.match_analyses where ai_run_id = '${runId}'`,
+    );
+    expect(count.rows[0].count).toBe("0");
+  });
+
+  it("rejects saving a cover letter for a succeeded run with no bound document", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "cover_letter",
+      "f5555555-5555-4555-8555-555555555555",
+    );
+    const runId = run.rows[0].id;
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_cover_letter_generation('${userA}', '${appA}', '${runId}', 'Draft', 'demo')`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: cover letter result missing/i);
+
+    const count = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.generated_documents where ai_run_id = '${runId}'`,
+    );
+    expect(count.rows[0].count).toBe("0");
+  });
+
+  it("rejects a succeeded interview prep run bound only to behavioural questions", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "interview_prep",
+      "f6666666-6666-4666-8666-666666666666",
+    );
+    const runId = run.rows[0].id;
+    const version = await nextDocumentVersion(ctx.admin, appA, "behavioural_questions");
+    await bindDocument(
+      ctx.admin,
+      userA,
+      appA,
+      runId,
+      "behavioural_questions",
+      version,
+      '{"questions":[]}',
+    );
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_interview_prep_bundle(
+          '${userA}', '${appA}', '${runId}', 'demo',
+          '{"questions":[{"question":"Q"}]}',
+          '{"questions":[{"question":"T"}]}',
+          '{"items":["R"]}'
+        )`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: interview prep bundle incomplete/i);
+
+    const count = await asUser(
+      ctx.port,
+      userA,
+      `select count(*) from public.generated_documents where ai_run_id = '${runId}'`,
+    );
+    expect(count.rows[0].count).toBe("1");
+  });
+
+  it("rejects a succeeded interview prep run missing the research checklist", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "interview_prep",
+      "f6677777-6677-4667-8667-667766776677",
+    );
+    const runId = run.rows[0].id;
+    for (const type of ["behavioural_questions", "technical_questions"]) {
+      const version = await nextDocumentVersion(ctx.admin, appA, type);
+      await bindDocument(ctx.admin, userA, appA, runId, type, version, '{"questions":[]}');
+    }
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_interview_prep_bundle(
+          '${userA}', '${appA}', '${runId}', 'demo',
+          '{"questions":[{"question":"Q"}]}',
+          '{"questions":[{"question":"T"}]}',
+          '{"items":["R"]}'
+        )`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: interview prep bundle incomplete/i);
+  });
+
+  it("rejects a succeeded interview prep run bound to a wrong document type", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "interview_prep",
+      "f6688888-6688-4668-8668-668866886688",
+    );
+    const runId = run.rows[0].id;
+    const bindings = [
+      ["behavioural_questions", '{"questions":[]}'],
+      ["technical_questions", '{"questions":[]}'],
+      ["cover_letter", '"wrong type"'],
+    ] as const;
+    for (const [type, content] of bindings) {
+      const version = await nextDocumentVersion(ctx.admin, appA, type);
+      await bindDocument(ctx.admin, userA, appA, runId, type, version, content);
+    }
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_interview_prep_bundle(
+          '${userA}', '${appA}', '${runId}', 'demo',
+          '{"questions":[{"question":"Q"}]}',
+          '{"questions":[{"question":"T"}]}',
+          '{"items":["R"]}'
+        )`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: interview prep bundle incomplete/i);
+  });
+
+  it("rejects a succeeded job extraction run with a null result", async () => {
+    const run = await createRun(
+      userA,
+      null,
+      "job_extraction",
+      "f6699999-6699-4669-8669-669966996699",
+    );
+    const runId = run.rows[0].id;
+    await ctx.admin.query(
+      `update public.ai_runs set status = 'succeeded', completed_at = now() where id = $1`,
+      [runId],
+    );
+
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.save_job_extraction_result('${userA}', '${runId}', '{"company":"Acme"}'::jsonb)`,
+      ),
+    ).rejects.toThrow(/inconsistent succeeded run: extraction result missing/i);
+
+    const state = await asUser(
+      ctx.port,
+      userA,
+      `select result_json from public.ai_runs where id = '${runId}'`,
+    );
+    expect(state.rows[0].result_json).toBeNull();
+  });
+
+  it("requires non-empty cover letter generation content", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "cover_letter",
+      "f6700000-6700-4670-8670-670067006700",
+    );
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_cover_letter_generation('${userA}', '${appA}', '${run.rows[0].id}', '   ', 'demo')`,
+      ),
+    ).rejects.toThrow(/cover letter content is required/i);
+  });
+
+  it("rejects cover letter generation content over 50,000 characters", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "cover_letter",
+      "f6711111-6711-4671-8671-671167116711",
+    );
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_cover_letter_generation(
+          '${userA}', '${appA}', '${run.rows[0].id}', repeat('x', 50001), 'demo'
+        )`,
+      ),
+    ).rejects.toThrow(/cover letter content is too long/i);
+  });
+
+  it("requires non-empty revision content", async () => {
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_cover_letter_revision('${userA}', '${appA}', '', 'edited')`,
+      ),
+    ).rejects.toThrow(/cover letter content is required/i);
+  });
+
+  it("rejects interview prep parts that omit their required array fields", async () => {
+    const run = await createRun(
+      userA,
+      appA,
+      "interview_prep",
+      "f6722222-6722-4672-8672-672267226722",
+    );
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.insert_interview_prep_bundle(
+          '${userA}', '${appA}', '${run.rows[0].id}', 'demo',
+          '{}', '{}', '{}'
+        )`,
+      ),
+    ).rejects.toThrow(/all three parts must include their required array fields/i);
+  });
+
+  it("rejects a non-object job extraction result", async () => {
+    const run = await createRun(
+      userA,
+      null,
+      "job_extraction",
+      "f6733333-6733-4673-8673-673367336733",
+    );
+    await expect(
+      asUser(
+        ctx.port,
+        userA,
+        `select public.save_job_extraction_result('${userA}', '${run.rows[0].id}', '[]'::jsonb)`,
+      ),
+    ).rejects.toThrow(/result must be a JSON object/i);
   });
 });

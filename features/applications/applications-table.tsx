@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Briefcase } from "lucide-react";
 import { APPLICATION_STATUS_LABELS, type ApplicationStatus } from "@/lib/validation/applications";
+import { formatDate as formatDateStable } from "@/lib/dates";
 
 export interface ApplicationRow {
   id: string;
@@ -35,11 +36,7 @@ function statusClass(status: ApplicationStatus): string {
 
 function formatDate(value: string | null): string {
   if (!value) return "—";
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatDateStable(value);
 }
 
 export function ApplicationsTable({ rows }: { rows: ApplicationRow[] }) {
@@ -95,9 +92,7 @@ export function ApplicationsTable({ rows }: { rows: ApplicationRow[] }) {
                 <td className="px-3 py-3 text-muted-foreground">{row.location ?? "—"}</td>
                 <td className="px-3 py-3">{formatDate(row.deadline)}</td>
                 <td className="px-3 py-3">{formatDate(row.date_applied)}</td>
-                <td className="px-3 py-3 text-muted-foreground">
-                  {new Date(row.updated_at).toLocaleDateString()}
-                </td>
+                <td className="px-3 py-3 text-muted-foreground">{formatDate(row.updated_at)}</td>
               </tr>
             ))}
           </tbody>

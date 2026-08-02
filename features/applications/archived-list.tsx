@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import { restoreApplication } from "@/features/applications/application-actions";
 import { APPLICATION_STATUS_LABELS, type ApplicationStatus } from "@/lib/validation/applications";
+import { formatDate } from "@/lib/dates";
 
 export interface ArchivedApplicationRow {
   id: string;
@@ -56,9 +57,7 @@ export function ArchivedApplicationsList({ initial }: { initial: ArchivedApplica
             <p className="text-xs text-muted-foreground">
               {APPLICATION_STATUS_LABELS[app.status]}
               {app.deadline ? ` · Deadline ${app.deadline}` : ""}
-              {app.archived_at
-                ? ` · Archived ${new Date(app.archived_at).toLocaleDateString()}`
-                : ""}
+              {app.archived_at ? ` · Archived ${formatDate(app.archived_at)}` : ""}
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={() => handleRestore(app.id)}>

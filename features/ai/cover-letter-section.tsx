@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
+import { formatDateTime } from "@/lib/dates";
 import {
   generateCoverLetter,
   restoreCoverLetterVersion,
@@ -116,8 +117,7 @@ export function CoverLetterSection({
         <p className="text-xs text-muted-foreground">
           Version {current.version} ·{" "}
           {current.generation_mode === "demo" ? "Demo AI Response" : "AI Response"} ·{" "}
-          {current.user_edited ? "edited" : "generated"} ·{" "}
-          {new Date(current.created_at).toLocaleString()}
+          {current.user_edited ? "edited" : "generated"} · {formatDateTime(current.created_at)}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={handleCopy}>

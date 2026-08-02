@@ -82,6 +82,18 @@ export async function bootstrapAuthShim(admin: pg.Client) {
       created_at timestamptz not null default now()
     );
   `);
+  // Supabase ships an `anon` role; the embedded test database does not.
+  // Creating it makes function-ACL revocations in migrations exercise the
+  // same code path as hosted Supabase.
+  await admin.query(`
+    do $$
+    begin
+      if not exists (select 1 from pg_roles where rolname = 'anon') then
+        create role anon nologin;
+      end if;
+    end
+    $$;
+  `);
 }
 
 /** Apply supabase/migrations/*.sql in filename order. */

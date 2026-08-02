@@ -668,7 +668,8 @@ Database hardening (new migration `20260802000006_phase5_ai_hardening.sql`):
   `user_edited = true`), `insert_interview_prep_bundle` (all three document
   types in one transaction; any failure rolls back all three), and
   `save_job_extraction_result`. The old permissive `insert_generated_document`
-  is revoked from authenticated users.
+  is revoked from PUBLIC, anon, and authenticated (see the permission
+  hardening migration below) and is no longer callable by ordinary users.
 - Version numbers are assigned after locking the application row, making
   concurrent edits/generations safe without application-level mutexes.
 - Job extraction now runs through the unified `ai_runs` lifecycle: the
@@ -679,6 +680,109 @@ Database hardening (new migration `20260802000006_phase5_ai_hardening.sql`):
 Tests: 253 + hardening additions (concurrent create_ai_run, run/application/
 operation/mode/status binding, result idempotency, interview-prep atomicity,
 version concurrency, direct-write prevention, cross-user isolation).
+
+Phase 6 has not been started. No out-of-scope feature was added.
+
+### Phase 5 function permission & idempotency hardening — 2026-08-02
+
+Additive migration `20260802000007_phase5_function_permissions.sql` (000005
+and 000006 are unchanged):
+
+Function ACL matrix (verified through PostgreSQL catalogs and real calls):
+
+- All nine Phase 5 AI RPCs (`create_ai_run`, `complete_ai_run`,
+  `lock_ai_run`, `insert_match_analysis`, `insert_generated_document`,
+  `insert_cover_letter_generation`, `insert_cover_letter_revision`,
+  `insert_interview_prep_bundle`, `save_job_extraction_result`) are revoked
+  from PUBLIC, anon, and authenticated.
+- EXECUTE is restored only for the seven entry-point RPCs
+  (`create_ai_run`, `complete_ai_run`, `insert_match_analysis`,
+  `insert_cover_letter_generation`, `insert_cover_letter_revision`,
+  `insert_interview_prep_bundle`, `save_job_extraction_result`) to
+  authenticated.
+- `lock_ai_run` is an internal helper with no ordinary-role EXECUTE, and its
+  body now rejects any `p_user_id` that is distinct from `auth.uid()` before
+  touching rows, so it cannot be used to probe or lock other users' runs even
+  if the ACL is accidentally changed.
+- The retired `insert_generated_document` has no PUBLIC/anon/authenticated
+  EXECUTE; authenticated calls fail with `permission denied for function`.
+
+Idempotency and lifecycle hardening:
+
+- `create_ai_run` returns `id = null`, `status = not_found`,
+  `created = false` for an application that does not belong to the caller
+  (no more zero-UUID). The service maps this to the existing safe
+  "The application was not found or is not yours." error and never calls the
+  provider or reads results.
+- On an existing `(user_id, operation, idempotency_key)` row, `create_ai_run`
+  now verifies `application_id`, `generation_mode`, and `operation`; any
+  mismatch raises `idempotency key conflicts with a different request` and
+  never reuses the earlier run. Concurrent same-key/same-user requests for
+  different applications produce exactly one legal run and one conflict
+  error. Keys remain scoped per operation, so a job-extraction key reused
+  under another operation creates a separate run rather than reusing the
+  extraction result.
+- Succeeded runs must be bound to their complete result: match runs require
+  exactly one `match_analyses` row, cover letter runs require exactly one
+  `cover_letter` document, interview prep runs require exactly the three
+  expected document types (one each), and extraction runs require non-null
+  `result_json`. Missing or wrong results raise
+  `inconsistent succeeded run: ...` instead of fabricating a second result.
+- RPC input boundaries: cover letter generation/revision requires non-empty
+  content up to 50,000 characters; interview prep parts must be objects with
+  their required `questions`/`items` arrays (empty objects are rejected);
+  job extraction results must be JSON objects.
+
+Service layer (`features/ai/ai-service.ts`):
+
+- `RunInfo.id` is now `string | null`; `createRun` maps `not_found` to the
+  safe not-found error and DB idempotency-conflict errors to a safe
+  `conflict` error.
+- No non-null assertions: run ids are validated with an explicit check
+  before provider calls, result reads, or failure completion.
+- Succeeded retries whose stored result is missing/inconsistent surface a
+  consistency error instead of "unexpected state" or a fabricated result.
+
+Verification evidence:
+
+- New `tests/ai-function-permissions.test.ts`: ACL catalog checks for
+  PUBLIC-only, anon, and authenticated EXECUTE; real
+  `permission denied for function` calls against `insert_generated_document`
+  and `lock_ai_run`; entry RPCs still callable; owner-level
+  `lock_ai_run` rejects a mismatched `auth.uid()`.
+- Extended `tests/ai-hardening.test.ts`: cross-application and cross-mode
+  idempotency collisions, concurrent same-key/different-application
+  conflict, not-found `id = null`, corrupted succeeded states for all four
+  result types, and RPC input-boundary rejections.
+- Extended `tests/ai-service.test.ts`: not-found mapping, null run id
+  guard, safe conflict mapping, consistency errors for missing match/cover
+  letter/interview prep/extraction results, and normal succeeded retries.
+- `tests/ai-rls.test.ts` now drives version increments through
+  `insert_cover_letter_generation` because the retired
+  `insert_generated_document` is intentionally no longer callable.
+
+Full suite: **313/313 automated tests pass** (30 files) on Windows,
+`npm run typecheck`, `npm run lint`, and `npm run format:check` pass, and
+`npm run build` succeeds locally. Ubuntu CI results are recorded below after
+push.
+
+Browser regression (headless Chrome against the local Docker-free backend
+with migration 000007 applied): Analyze Job creates an application; Match
+generation with rapid repeated clicks creates exactly one run and one
+snapshot; cover letter generate/edit/restore produces versions 1-3;
+interview prep persists one row per document type; refresh and
+sign-out/sign-in persistence verified; a nonexistent application renders the
+404 page; 375/768/1280 px layouts show no horizontal overflow on the detail,
+board, and profile pages; zero console errors and zero React hydration
+errors.
+
+Hydration hardening: `Date.prototype.toLocaleString()` output differs
+between the Next.js server (Node ICU) and Chrome, producing React hydration
+mismatches on timestamp text. New `lib/dates.ts` (`formatDateTime`,
+`formatDate`) pins an explicit `en-US` ICU format, and all nine
+`toLocale*` render sites (match/cover letter/interview prep sections, status
+event history, interview times, applications table, archived list, and
+date-only fields) now use it.
 
 Phase 6 has not been started. No out-of-scope feature was added.
 

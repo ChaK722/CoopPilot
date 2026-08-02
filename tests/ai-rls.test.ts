@@ -168,11 +168,11 @@ describe("Phase 5 AI tables: RLS and RPCs", () => {
     const v1 = await asUser(
       ctx.port,
       userA,
-      `select public.insert_generated_document(
-         '${userA}', '${appA}', 'cover_letter', 'Draft one', null, 'demo', false, '${runId}'
+      `select public.insert_cover_letter_generation(
+         '${userA}', '${appA}', '${runId}', 'Draft one', 'demo'
        )`,
     );
-    expect(v1.rows[0].insert_generated_document).toBe(1);
+    expect(v1.rows[0].insert_cover_letter_generation).toBe(1);
 
     const key2 = "d5555555-5555-4555-8555-555555555555";
     const run2 = await asUser(
@@ -183,11 +183,11 @@ describe("Phase 5 AI tables: RLS and RPCs", () => {
     const v2 = await asUser(
       ctx.port,
       userA,
-      `select public.insert_generated_document(
-         '${userA}', '${appA}', 'cover_letter', 'Draft two', null, 'demo', true, '${run2.rows[0].id}'
+      `select public.insert_cover_letter_generation(
+         '${userA}', '${appA}', '${run2.rows[0].id}', 'Draft two', 'demo'
        )`,
     );
-    expect(v2.rows[0].insert_generated_document).toBe(2);
+    expect(v2.rows[0].insert_cover_letter_generation).toBe(2);
 
     const versions = await asUser(
       ctx.port,

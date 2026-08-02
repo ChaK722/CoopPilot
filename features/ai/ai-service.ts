@@ -21,7 +21,7 @@ type DbClient = SupabaseClient;
 type RunOperation = "job_extraction" | "match_analysis" | "cover_letter" | "interview_prep";
 
 interface RunInfo {
-  id: string;
+  id: string | null;
   status: string;
   created: boolean;
   safe_error_message: string | null;
@@ -36,6 +36,43 @@ function inProgress(): AppError {
     "conflict",
     "A request with the same key is already in progress. Please wait.",
   );
+}
+
+function idempotencyConflict(): AppError {
+  return new AppError(
+    "conflict",
+    "The request key conflicts with a different request. Please try again.",
+  );
+}
+
+function consistencyError(message: string): AppError {
+  return new AppError("unexpected", message);
+}
+
+function requireRunId(run: RunInfo): string {
+  if (run.id === null) {
+    throw new AppError("unexpected", "The AI request is in an unexpected state.");
+  }
+  return run.id;
+}
+
+function rpcErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return "";
+}
+
+function mapRpcError(error: unknown, fallbackMessage: string): AppError {
+  const message = rpcErrorMessage(error);
+  if (/idempotency key conflicts/i.test(message)) {
+    return idempotencyConflict();
+  }
+  if (/inconsistent succeeded run/i.test(message)) {
+    return consistencyError("The saved AI result is missing or inconsistent. Please try again.");
+  }
+  return new AppError("database_unavailable", fallbackMessage, error);
 }
 
 export function createAIService(supabase: DbClient) {
@@ -135,14 +172,12 @@ export function createAIService(supabase: DbClient) {
       p_generation_mode: mode,
     });
     if (error) {
-      throw new AppError(
-        "database_unavailable",
-        "Could not start the AI request. Please try again.",
-        error,
-      );
+      throw mapRpcError(error, "Could not start the AI request. Please try again.");
     }
     const row = (data as RunInfo[] | null)?.[0];
     if (!row) throw new AppError("unexpected", "Could not start the AI request.");
+    if (row.status === "not_found") throw notFound();
+    if (row.status === "idempotency_conflict") throw idempotencyConflict();
     return row;
   }
 
@@ -197,7 +232,7 @@ export function createAIService(supabase: DbClient) {
       throw new AppError("database_unavailable", "Could not load the analysis.", error);
     }
     if (!data?.result_json) {
-      throw new AppError("unexpected", "The analysis result is missing.");
+      throw consistencyError("The saved analysis is missing or inconsistent. Please try again.");
     }
     const parsed = jobExtractionResultSchema.safeParse(data.result_json);
     if (!parsed.success) {
@@ -208,6 +243,7 @@ export function createAIService(supabase: DbClient) {
 
   function ensureCreated(run: RunInfo) {
     if (run.created) return;
+    if (run.status === "not_found") throw notFound();
     if (run.status === "running") throw inProgress();
     if (run.status === "failed") {
       throw new AppError(
@@ -310,13 +346,17 @@ export function createAIService(supabase: DbClient) {
       const run = await createRun(userId, applicationId, "match_analysis", idempotencyKey, "demo");
       if (!run.created) {
         ensureCreated(run);
-        const existing = await readMatchByRun(userId, run.id);
+        const runId = requireRunId(run);
+        const existing = await readMatchByRun(userId, runId);
         if (!existing) {
-          throw new AppError("unexpected", "The analysis result is missing.");
+          throw consistencyError(
+            "The saved analysis is missing or inconsistent. Please try again.",
+          );
         }
         return existing;
       }
 
+      const runId = requireRunId(run);
       try {
         const [application, profile] = await Promise.all([
           loadApplicationData(userId, applicationId),
@@ -335,24 +375,20 @@ export function createAIService(supabase: DbClient) {
         const { error } = await supabase.rpc("insert_match_analysis", {
           p_user_id: userId,
           p_application_id: applicationId,
-          p_run_id: run.id,
+          p_run_id: runId,
           p_analysis: validated.data,
           p_mode: "demo",
         });
         if (error) {
-          throw new AppError(
-            "database_unavailable",
-            "Could not save the analysis. Please try again.",
-            error,
-          );
+          throw mapRpcError(error, "Could not save the analysis. Please try again.");
         }
-        const saved = await readMatchByRun(userId, run.id);
+        const saved = await readMatchByRun(userId, runId);
         return saved;
       } catch (error) {
         if (error instanceof AppError) {
-          await completeRunFailed(userId, run.id, error.safeMessage);
+          await completeRunFailed(userId, runId, error.safeMessage);
         } else {
-          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+          await completeRunFailed(userId, runId, "The AI request failed. Please try again.");
         }
         throw error;
       }
@@ -362,13 +398,17 @@ export function createAIService(supabase: DbClient) {
       const run = await createRun(userId, applicationId, "cover_letter", idempotencyKey, "demo");
       if (!run.created) {
         ensureCreated(run);
-        const existing = await readDocumentByRun(userId, run.id, "cover_letter");
+        const runId = requireRunId(run);
+        const existing = await readDocumentByRun(userId, runId, "cover_letter");
         if (!existing) {
-          throw new AppError("unexpected", "The cover letter is missing.");
+          throw consistencyError(
+            "The saved cover letter is missing or inconsistent. Please try again.",
+          );
         }
         return existing;
       }
 
+      const runId = requireRunId(run);
       try {
         const [application, profile] = await Promise.all([
           loadApplicationData(userId, applicationId),
@@ -420,24 +460,20 @@ export function createAIService(supabase: DbClient) {
         const { error } = await supabase.rpc("insert_cover_letter_generation", {
           p_user_id: userId,
           p_application_id: applicationId,
-          p_run_id: run.id,
+          p_run_id: runId,
           p_content: validated.data.content ?? "",
           p_mode: "demo",
         });
         if (error) {
-          throw new AppError(
-            "database_unavailable",
-            "Could not save the cover letter. Please try again.",
-            error,
-          );
+          throw mapRpcError(error, "Could not save the cover letter. Please try again.");
         }
-        const saved = await readDocumentByRun(userId, run.id, "cover_letter");
+        const saved = await readDocumentByRun(userId, runId, "cover_letter");
         return saved;
       } catch (error) {
         if (error instanceof AppError) {
-          await completeRunFailed(userId, run.id, error.safeMessage);
+          await completeRunFailed(userId, runId, error.safeMessage);
         } else {
-          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+          await completeRunFailed(userId, runId, "The AI request failed. Please try again.");
         }
         throw error;
       }
@@ -447,17 +483,21 @@ export function createAIService(supabase: DbClient) {
       const run = await createRun(userId, applicationId, "interview_prep", idempotencyKey, "demo");
       if (!run.created) {
         ensureCreated(run);
+        const runId = requireRunId(run);
         const [behavioural, technical, research] = await Promise.all([
-          readDocumentByRun(userId, run.id, "behavioural_questions"),
-          readDocumentByRun(userId, run.id, "technical_questions"),
-          readDocumentByRun(userId, run.id, "research_checklist"),
+          readDocumentByRun(userId, runId, "behavioural_questions"),
+          readDocumentByRun(userId, runId, "technical_questions"),
+          readDocumentByRun(userId, runId, "research_checklist"),
         ]);
         if (!behavioural || !technical || !research) {
-          throw new AppError("unexpected", "The interview preparation is incomplete.");
+          throw consistencyError(
+            "The saved interview preparation is incomplete or inconsistent. Please try again.",
+          );
         }
         return { behavioural, technical, research };
       }
 
+      const runId = requireRunId(run);
       try {
         const [application, profile] = await Promise.all([
           loadApplicationData(userId, applicationId),
@@ -505,30 +545,26 @@ export function createAIService(supabase: DbClient) {
         const { error } = await supabase.rpc("insert_interview_prep_bundle", {
           p_user_id: userId,
           p_application_id: applicationId,
-          p_run_id: run.id,
+          p_run_id: runId,
           p_mode: "demo",
           p_behavioural: { questions: validated.data.behavioural_questions },
           p_technical: { questions: validated.data.technical_questions },
           p_research: { items: validated.data.research_checklist },
         });
         if (error) {
-          throw new AppError(
-            "database_unavailable",
-            "Could not save the interview preparation. Please try again.",
-            error,
-          );
+          throw mapRpcError(error, "Could not save the interview preparation. Please try again.");
         }
         const [behavioural, technical, research] = await Promise.all([
-          readDocumentByRun(userId, run.id, "behavioural_questions"),
-          readDocumentByRun(userId, run.id, "technical_questions"),
-          readDocumentByRun(userId, run.id, "research_checklist"),
+          readDocumentByRun(userId, runId, "behavioural_questions"),
+          readDocumentByRun(userId, runId, "technical_questions"),
+          readDocumentByRun(userId, runId, "research_checklist"),
         ]);
         return { behavioural, technical, research };
       } catch (error) {
         if (error instanceof AppError) {
-          await completeRunFailed(userId, run.id, error.safeMessage);
+          await completeRunFailed(userId, runId, error.safeMessage);
         } else {
-          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+          await completeRunFailed(userId, runId, "The AI request failed. Please try again.");
         }
         throw error;
       }
@@ -598,9 +634,10 @@ export function createAIService(supabase: DbClient) {
       const run = await createRun(userId, null, "job_extraction", idempotencyKey, "demo");
       if (!run.created) {
         ensureCreated(run);
-        return readExtractionByRun(userId, run.id);
+        return readExtractionByRun(userId, requireRunId(run));
       }
 
+      const runId = requireRunId(run);
       try {
         const provider = await getAIProvider();
         const result = await withProviderTimeout(
@@ -615,22 +652,18 @@ export function createAIService(supabase: DbClient) {
         }
         const { error } = await supabase.rpc("save_job_extraction_result", {
           p_user_id: userId,
-          p_run_id: run.id,
+          p_run_id: runId,
           p_result: validated.data,
         });
         if (error) {
-          throw new AppError(
-            "database_unavailable",
-            "Could not save the analysis. Please try again.",
-            error,
-          );
+          throw mapRpcError(error, "Could not save the analysis. Please try again.");
         }
         return validated.data;
       } catch (error) {
         if (error instanceof AppError) {
-          await completeRunFailed(userId, run.id, error.safeMessage);
+          await completeRunFailed(userId, runId, error.safeMessage);
         } else {
-          await completeRunFailed(userId, run.id, "The AI request failed. Please try again.");
+          await completeRunFailed(userId, runId, "The AI request failed. Please try again.");
         }
         throw error;
       }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { formatDateTime } from "@/lib/dates";
 import { generateMatchAnalysis } from "@/features/ai/ai-actions";
 
 export interface MatchRow {
@@ -101,7 +102,7 @@ export function MatchSection({
           <p className="text-3xl font-semibold">{match.overall_score}/100</p>
           <p className="text-xs text-muted-foreground">
             {match.generation_mode === "demo" ? "Demo AI Response" : "AI Response"} ·{" "}
-            {new Date(match.generated_at).toLocaleString()}
+            {formatDateTime(match.generated_at)}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleGenerate} loading={generating}>

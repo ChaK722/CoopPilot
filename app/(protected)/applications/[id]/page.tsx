@@ -12,6 +12,7 @@ import {
 import { requireUser } from "@/lib/auth/route-guards";
 import { createServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { createApplicationService } from "@/features/applications/application-service";
+import { formatDate as formatDateStable, formatDateTime } from "@/lib/dates";
 import { createAIService } from "@/features/ai/ai-service";
 import { JobDetailActions } from "@/features/applications/job-detail-actions";
 import { NotesAutosave } from "@/features/applications/notes-autosave";
@@ -32,11 +33,7 @@ interface PageProps {
 
 function formatDate(value: string | null): string {
   if (!value) return "Not set";
-  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+  return formatDateStable(value);
 }
 
 export default async function ApplicationDetailPage({ params }: PageProps) {
@@ -282,7 +279,7 @@ export default async function ApplicationDetailPage({ params }: PageProps) {
                     : `Created as ${APPLICATION_STATUS_LABELS[event.to_status as ApplicationStatus]}`}
                 </span>
                 <time dateTime={event.changed_at} className="text-xs text-muted-foreground">
-                  {new Date(event.changed_at).toLocaleString()}
+                  {formatDateTime(event.changed_at)}
                 </time>
               </li>
             ))}

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { formatDateTime } from "@/lib/dates";
 import { generateInterviewPrep } from "@/features/ai/ai-actions";
 
 export interface PrepQuestion {
@@ -80,7 +81,7 @@ export function InterviewPrepSection({
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">
           {behavioural?.generation_mode === "demo" ? "Demo AI Response" : "AI Response"} ·{" "}
-          {behavioural?.created_at ? new Date(behavioural.created_at).toLocaleString() : ""}
+          {behavioural?.created_at ? formatDateTime(behavioural.created_at) : ""}
         </p>
         <Button variant="outline" size="sm" onClick={handleGenerate} loading={generating}>
           <RefreshCw className="h-4 w-4" aria-hidden="true" />
