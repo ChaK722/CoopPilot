@@ -29,3 +29,9 @@ jobs:
 
       - name: Production build (npm run build)
         run: npm run build
+        env:
+          # Public build-time placeholders: protected pages render during
+          # `next build`, and require NEXT_PUBLIC_* values to exist. They are
+          # not secrets; real values come from the deployment environment.
+          NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
