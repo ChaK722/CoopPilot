@@ -5,7 +5,7 @@ job seekers: profile management, job extraction, application tracking, AI
 match analysis, cover letters, interview preparation, and analytics — all
 usable without an external AI API key (Demo Mode).
 
-> Status: **Phases 1–4 implemented.** Phase 1: public pages, protected
+> Status: **Phases 1–5 implemented.** Phase 1: public pages, protected
 > application shell, Supabase authentication, RLS-protected profile baseline,
 > repeatable demo seed. Phase 2: complete user profile (basic information,
 > preferences, education, skills, experience, projects). Phase 3: job
@@ -14,8 +14,12 @@ usable without an external AI API key (Demo Mode).
 > edit/duplicate/delete, and a searchable/filterable/sortable applications
 > table. Phase 4: seven-column application board with accessible
 > drag-and-drop, status selectors, transactional status history, optional
-> applied-date prompts, deadline reminders, and archive/restore. Later phases
-> (AI, analytics, deployment) are tracked in `docs/implementation-plan.md`.
+> applied-date prompts, deadline reminders, and archive/restore. Phase 5:
+> AI job preparation — match analysis with weighted scores and stale
+> detection, versioned cover letters with sufficiency checks, and interview
+> preparation, all running deterministically in Demo Mode with idempotent
+> AI-run records. Later phases (analytics, deployment) are tracked in
+> `docs/implementation-plan.md`.
 
 ## Development environment and CI
 

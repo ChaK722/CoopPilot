@@ -595,6 +595,51 @@ Acceptance criteria:
 
 Phase 5 exit criterion: every required AI workflow works in both configured external mode and no-key Demo Mode, persists its results, and does not invent user facts.
 
+### Phase 5 verified status — 2026-08-02
+
+Status: **COMPLETE — implemented and verified** (all Phase 5 acceptance
+criteria pass; Phase 6 has not been started).
+
+Implemented:
+
+- 5A: Full AI provider contract (`extractJob`, `analyzeMatch`,
+  `generateCoverLetter`, `generateInterviewPrep`), Zod result schemas,
+  `withProviderTimeout` bounded execution, `ai_runs` idempotency records
+  (unique `(user_id, operation, idempotency_key)`), mode labels, and
+  deterministic Demo implementations for all four operations. All AI tables
+  are write-only through security-definer RPCs (ordinary users read only).
+- 5B: Match analysis with the fixed five-part weighted breakdown
+  (40/20/20/10/10), schema validation that component scores sum to the
+  overall score, matching/missing skills separated by requirement type,
+  experience/project evidence referencing stored profile rows, keywords,
+  safe suggestions (never fabricate), and profile/application source-hash
+  stale detection with regeneration as a new snapshot.
+- 5C: Cover letter generation with a pre-generation sufficiency check
+  (actionable prompt instead of invented content), 250–400 word Demo output
+  built only from real profile facts, edit-save as a new version, copy with
+  explicit feedback, version history with restore, and a regeneration
+  warning when the current version is edited.
+- 5D: Interview preparation with behavioural questions, technical questions
+  tied to stored job skills, and a research checklist; each question carries
+  why/example/outline, and examples reference only stored experience or
+  state that none is available. Persisted per content type with versioning.
+- Job Detail now hosts Match analysis, Cover letter, and Interview
+  preparation sections with loading/empty/success/error states and Demo
+  labels.
+
+Verification evidence:
+
+- 253 automated tests pass (up from 215), including Demo determinism, score
+  weights and summation, sufficiency checks, RPC idempotency/versioning and
+  RLS isolation on real embedded PostgreSQL, service-layer run lifecycle and
+  stale hashes, and component tests for all three Job Detail sections.
+- `npm run verify` and `npm run build` pass locally and on Ubuntu CI.
+- Headless-browser acceptance: match/cover letter/interview prep generation,
+  copy feedback, edit-save as version 2 with version history, responsive
+  375/768/1280px, zero console errors.
+
+Phase 6 has not been started. No out-of-scope feature was added.
+
 ## 7. Phase 6 — Dashboard and analytics
 
 ### 6A. Analytics query layer and summary cards

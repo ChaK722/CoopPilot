@@ -1,14 +1,26 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CalendarDays, ClipboardList, FileText, GraduationCap, History, Link2 } from "lucide-react";
+import {
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  GraduationCap,
+  History,
+  Link2,
+  Sparkles,
+} from "lucide-react";
 import { requireUser } from "@/lib/auth/route-guards";
 import { createServerSupabaseClient } from "@/lib/auth/supabase-server";
 import { createApplicationService } from "@/features/applications/application-service";
+import { createAIService } from "@/features/ai/ai-service";
 import { JobDetailActions } from "@/features/applications/job-detail-actions";
 import { NotesAutosave } from "@/features/applications/notes-autosave";
 import { InterviewSection, type InterviewRow } from "@/features/applications/interview-section";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { APPLICATION_STATUS_LABELS, type ApplicationStatus } from "@/lib/validation/applications";
+import { MatchSection, type MatchRow } from "@/features/ai/match-section";
+import { CoverLetterSection, type CoverLetterRow } from "@/features/ai/cover-letter-section";
+import { InterviewPrepSection, type PrepRow } from "@/features/ai/interview-prep-section";
 
 export const metadata: Metadata = {
   title: "Job Detail",
@@ -50,6 +62,14 @@ export default async function ApplicationDetailPage({ params }: PageProps) {
         <p className="text-sm text-muted-foreground">Please refresh the page to try again.</p>
       </div>
     );
+  }
+
+  const aiService = createAIService(await createServerSupabaseClient());
+  let aiBundle: Awaited<ReturnType<typeof aiService.getAIBundle>> | null = null;
+  try {
+    aiBundle = await aiService.getAIBundle(user.id, id);
+  } catch {
+    aiBundle = null;
   }
 
   const app = bundle.application;
@@ -108,6 +128,55 @@ export default async function ApplicationDetailPage({ params }: PageProps) {
               <span>Not set</span>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
+            Match analysis
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <MatchSection
+            applicationId={app.id}
+            match={(aiBundle?.match as MatchRow | null) ?? null}
+            stale={aiBundle?.matchStale ?? false}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
+            Cover letter
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CoverLetterSection
+            applicationId={app.id}
+            current={(aiBundle?.coverLetter as CoverLetterRow | null) ?? null}
+            versions={(aiBundle?.coverLetterVersions as CoverLetterRow[] | null) ?? []}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" aria-hidden="true" />
+            Interview preparation
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <InterviewPrepSection
+            applicationId={app.id}
+            behavioural={(aiBundle?.behaviouralQuestions as PrepRow | null) ?? null}
+            technical={(aiBundle?.technicalQuestions as PrepRow | null) ?? null}
+            research={(aiBundle?.researchChecklist as PrepRow | null) ?? null}
+          />
         </CardContent>
       </Card>
 
