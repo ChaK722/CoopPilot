@@ -13,6 +13,33 @@ usable without an external AI API key (Demo Mode).
 > server-side validation. Later phases (applications, AI, analytics,
 > deployment) are tracked in `docs/implementation-plan.md`.
 
+## Development environment and CI
+
+- **Local development currently runs on Windows.** All Phase 1–2 work was
+  developed and verified on Windows (PowerShell + Node.js).
+- **Linux is the cross-platform quality gate.** Every push to `main` and
+  every pull request triggers
+  [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on the latest
+  stable Ubuntu runner, which runs `npm ci`, `npm run verify`, and
+  `npm run build`.
+- **When migrating to Linux/AWS, re-run `npm ci`** on the target machine
+  (or in the deployment image). `node_modules` is never committed, and the
+  lockfile pins the exact dependency versions, including platform-specific
+  packages.
+- **`.env.local` never travels with Git.** It is ignored
+  (`.env*.local`), so the deployment environment must be configured with its
+  own Supabase project URL, anon key, service-role key, and seed password.
+- Line endings are normalized by `.gitattributes` (LF in the repo, platform
+  default on checkout; shell scripts, YAML, and Dockerfiles stay LF).
+
+### AWS deployment note
+
+No AWS platform has been decided yet (App Runner vs. ECS vs. other). Until
+that decision is made, the repository intentionally does **not** include a
+production Dockerfile or AWS infrastructure configuration. The next
+deployment milestone should introduce a production Dockerfile using
+Next.js's `output: "standalone"` build once the platform is chosen.
+
 ## Prerequisites
 
 - Node.js 20.9+ (Node 24 used during development)

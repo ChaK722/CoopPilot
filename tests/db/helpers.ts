@@ -43,24 +43,28 @@ export async function startTestPostgres(): Promise<TestPostgres> {
     port,
     stop: async () => {
       await admin.end().catch(() => undefined);
-      // embedded-postgres's stop() can hang on Windows (taskkill exit race).
-      // Shut the cluster down through pg_ctl directly, then clean the temp dir.
-      const dataDir = db["options"].databaseDir as string;
-      const { spawnSync } = await import("node:child_process");
-      const pgBin = join(
-        process.cwd(),
-        "node_modules",
-        "@embedded-postgres",
-        "windows-x64",
-        "native",
-        "bin",
-      );
-      const pgCtl = join(pgBin, "pg_ctl.exe");
-      spawnSync(pgCtl, ["-D", dataDir, "stop", "-m", "fast"], {
-        stdio: "ignore",
-        timeout: 30_000,
-      });
-      await db.stop().catch(() => undefined);
+      if (process.platform === "win32") {
+        // embedded-postgres's stop() can hang on Windows (taskkill exit
+        // race). Shut the cluster down through pg_ctl directly instead.
+        const dataDir = db["options"].databaseDir as string;
+        const { spawnSync } = await import("node:child_process");
+        const pgBin = join(
+          process.cwd(),
+          "node_modules",
+          "@embedded-postgres",
+          "windows-x64",
+          "native",
+          "bin",
+        );
+        const pgCtl = join(pgBin, "pg_ctl.exe");
+        spawnSync(pgCtl, ["-D", dataDir, "stop", "-m", "fast"], {
+          stdio: "ignore",
+          timeout: 30_000,
+        });
+        await db.stop().catch(() => undefined);
+      } else {
+        await db.stop();
+      }
     },
   };
 }
