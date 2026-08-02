@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
-import { TagInput } from "@/features/profile/tag-input";
+import { TagInput } from "@/components/ui/tag-input";
 import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import {
   createEducation,

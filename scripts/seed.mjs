@@ -200,6 +200,176 @@ async function main() {
 
   console.log("Demo education, skills, experience, and projects written.");
 
+  const applications = [
+    {
+      id: "a0000000-0000-4000-8000-000000000101",
+      creation_key: "b0000000-0000-4000-8000-000000000101",
+      company: "Example Tech Inc.",
+      job_title: "Software Developer Co-op",
+      location: "Toronto, ON",
+      country: "Canada",
+      work_arrangement: "Hybrid",
+      employment_type: "Co-op / Internship",
+      work_term_duration: "4 months",
+      deadline: "2026-09-15",
+      salary_text: "Competitive hourly rate",
+      education_requirements: ["Currently enrolled in a CS program"],
+      years_of_experience: "0-2 years",
+      posting_url: "https://example.com/careers/coop",
+      original_description:
+        "Example Tech Inc. is hiring a Software Developer Co-op for the fall term. You will build web features, collaborate with the team, and ship to production.",
+      responsibilities: ["Build and maintain web application features"],
+      qualifications: ["Experience with TypeScript or JavaScript"],
+      status: "saved",
+      skills: [
+        ["required", "TypeScript"],
+        ["required", "React"],
+        ["preferred", "AWS"],
+      ],
+    },
+    {
+      id: "a0000000-0000-4000-8000-000000000102",
+      creation_key: "b0000000-0000-4000-8000-000000000102",
+      company: "Northwind Labs",
+      job_title: "QA Automation Intern",
+      location: "Remote (Canada)",
+      country: "Canada",
+      work_arrangement: "Remote",
+      employment_type: "Internship",
+      work_term_duration: "8 months",
+      deadline: "2026-08-30",
+      salary_text: "CAD 30/hr",
+      education_requirements: [],
+      years_of_experience: "0-1 years",
+      posting_url: null,
+      original_description:
+        "Northwind Labs is looking for a QA Automation Intern to write and maintain end-to-end tests for our web platform.",
+      responsibilities: ["Write and maintain end-to-end tests"],
+      qualifications: ["Familiarity with Playwright or Cypress"],
+      status: "applied",
+      skills: [
+        ["required", "Playwright"],
+        ["preferred", "Python"],
+      ],
+    },
+    {
+      id: "a0000000-0000-4000-8000-000000000103",
+      creation_key: "b0000000-0000-4000-8000-000000000103",
+      company: "Maple Cloud Systems",
+      job_title: "Backend Developer Co-op",
+      location: "Waterloo, ON",
+      country: "Canada",
+      work_arrangement: "On-site",
+      employment_type: "Co-op",
+      work_term_duration: "4 months",
+      deadline: "2026-08-20",
+      salary_text: "Competitive",
+      education_requirements: ["Second-year CS or related program"],
+      years_of_experience: null,
+      posting_url: "https://maplecloud.example.com/careers",
+      original_description:
+        "Maple Cloud Systems is hiring a Backend Developer Co-op to work on PostgreSQL-backed services and REST APIs.",
+      responsibilities: ["Build REST APIs", "Optimize database queries"],
+      qualifications: ["Experience with PostgreSQL", "Experience with Node.js"],
+      status: "interview",
+      skills: [
+        ["required", "PostgreSQL"],
+        ["required", "Node.js"],
+        ["preferred", "Docker"],
+      ],
+    },
+  ];
+
+  let skillCounter = 0;
+  let eventCounter = 0;
+
+  for (const app of applications) {
+    const { error: appError } = await admin.from("applications").upsert(
+      {
+        id: app.id,
+        user_id: userId,
+        creation_key: app.creation_key,
+        company: app.company,
+        job_title: app.job_title,
+        location: app.location,
+        country: app.country,
+        work_arrangement: app.work_arrangement,
+        employment_type: app.employment_type,
+        work_term_duration: app.work_term_duration,
+        deadline: app.deadline,
+        salary_text: app.salary_text,
+        education_requirements: app.education_requirements,
+        years_of_experience: app.years_of_experience,
+        posting_url: app.posting_url,
+        original_description: app.original_description,
+        responsibilities: app.responsibilities,
+        qualifications: app.qualifications,
+        status: app.status,
+      },
+      { onConflict: "id" },
+    );
+    if (appError) throw new Error(`Could not seed application: ${appError.message}`);
+
+    for (const [skillIndex, [requirementType, name]] of app.skills.entries()) {
+      skillCounter += 1;
+      const { error: skillError } = await admin.from("application_skills").upsert(
+        {
+          id: `a0000000-0000-4000-8000-${String(1000 + skillCounter).padStart(12, "0")}`,
+          user_id: userId,
+          application_id: app.id,
+          requirement_type: requirementType,
+          name,
+          normalized_name: name.toLowerCase(),
+          sort_order: skillIndex,
+        },
+        { onConflict: "id" },
+      );
+      if (skillError) throw new Error(`Could not seed application skill: ${skillError.message}`);
+    }
+
+    const events = [{ from_status: null, to_status: app.status }];
+    if (app.status === "applied") {
+      events.unshift({ from_status: "saved", to_status: "applied" });
+    } else if (app.status === "interview") {
+      events.unshift(
+        { from_status: null, to_status: "saved" },
+        { from_status: "saved", to_status: "applied" },
+        { from_status: "applied", to_status: "interview" },
+      );
+    }
+    for (const [eventIndex, event] of events.entries()) {
+      eventCounter += 1;
+      const { error: eventError } = await admin.from("application_status_events").upsert(
+        {
+          id: `a0000000-0000-4000-8000-${String(2000 + eventCounter).padStart(12, "0")}`,
+          user_id: userId,
+          application_id: app.id,
+          from_status: event.from_status,
+          to_status: event.to_status,
+          changed_at: new Date(Date.now() - (events.length - eventIndex) * 86400000).toISOString(),
+        },
+        { onConflict: "id" },
+      );
+      if (eventError) throw new Error(`Could not seed status event: ${eventError.message}`);
+    }
+  }
+
+  const { error: interviewError } = await admin.from("interviews").upsert(
+    {
+      id: "a0000000-0000-4000-8000-000000000401",
+      user_id: userId,
+      application_id: "a0000000-0000-4000-8000-000000000103",
+      interview_type: "Technical",
+      scheduled_at: new Date(Date.now() + 3 * 86400000).toISOString(),
+      location_or_link: "https://meet.example.com/maplecloud",
+      notes: "Two 45-minute rounds: coding + system design.",
+    },
+    { onConflict: "id" },
+  );
+  if (interviewError) throw new Error(`Could not seed interview: ${interviewError.message}`);
+
+  console.log("Demo applications, skills, status history, and interviews written.");
+
   console.log("Seed complete. Log in with:");
   console.log(`  email:    ${demoEmail}`);
   console.log("  password: <SEED_DEMO_PASSWORD value>");

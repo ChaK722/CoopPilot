@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
-import { TagInput } from "@/features/profile/tag-input";
+import { TagInput } from "@/components/ui/tag-input";
 import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import { replaceSkills } from "@/features/profile/profile-actions";
 import {

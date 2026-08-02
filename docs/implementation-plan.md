@@ -331,6 +331,59 @@ Acceptance criteria:
 
 Phase 3 exit criterion: users can create, inspect, edit, duplicate, delete, search, filter, and sort persistent applications, with a manual path when AI fails.
 
+### Phase 3 verified status — 2026-08-02
+
+Status: **COMPLETE — implemented and verified** (all Phase 3 acceptance
+criteria pass; Phase 4 has not been started).
+
+Implemented:
+
+- 3A: Server-side AI provider contract (`AIProvider.extractJob`) with a
+  schema-validated extraction result; deterministic Demo provider preserves
+  the full original description and submitted URL; analyze form rejects empty
+  descriptions and disables repeated Analyze clicks; review form exposes every
+  extracted field as editable, with a clearly labelled `Demo AI Response`
+  banner and a manual entry path (`/applications/new` → "Skip analysis").
+- 3B: Transactional application creation (application + skills + initial
+  status event in one `create_application` RPC, idempotent per
+  `(user_id, creation_key)`); Job Detail page with Header, Overview,
+  Requirements, Notes (debounced autosave with Saving/Saved/failure states),
+  Interview dates (add/delete), status history, and Original description;
+  edit page reusing the review form; duplicate via `duplicate_application`
+  RPC (fresh id/creation key/status history, copied job fields and skills);
+  permanent delete with focus-managed confirmation.
+- 3C: `/applications` responsive table (desktop) / card list (mobile) with
+  URL-driven search (company, job title, notes, skills), intersection
+  filters (status multi-select, company, location, work arrangement, required
+  skill, deadline range, archive state), eight documented sort fields with
+  direction toggle, and one-click filter reset. Archived records are hidden
+  by default (archive actions themselves arrive in Phase 4).
+- Database: `applications`, `application_skills`, `application_status_events`,
+  `interviews` tables with RLS policies (child tables verify parent
+  ownership), CHECK constraints, indexes, and transactional RPCs
+  (`create_application`, `duplicate_application`).
+- Seed: demo user now has three applications across statuses (saved/applied/
+  interview) with skills, full status history, and one interview.
+
+Verification evidence:
+
+- 153 automated tests pass (validation, service layer, server-action input
+  rejection, component tests, real-PostgreSQL RLS matrix for all four new
+  tables, RPC idempotency/ownership, and persistence across fresh
+  connections).
+- `npm run verify` and `npm run build` pass locally and on Ubuntu CI.
+- Headless-browser acceptance: login, seeded list, job detail, search
+  filtering, analyze → review → save → detail redirect, duplicate, notes
+  autosave, and no horizontal overflow at 375/768/1280px with zero console
+  errors.
+
+Documented decisions for open plan items: sortable fields are the table's
+displayed fields (company, job title, location, deadline, date applied,
+status, created/updated); duplication copies job fields + skills and resets
+notes, dates, and status history.
+
+Phase 4 has not been started. No out-of-scope feature was added.
+
 ## 5. Phase 4 — Application board
 
 ### 4A. Seven-column board and cards

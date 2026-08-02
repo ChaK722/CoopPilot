@@ -1,0 +1,155 @@
+import { describe, expect, it, vi } from "vitest";
+import { createApplicationService } from "@/features/applications/application-service";
+
+function mockQueryResult(result: unknown) {
+  return { data: result, error: null };
+}
+
+interface BuilderCall {
+  method: string;
+  args: unknown[];
+}
+
+function mockSupabase(results: Record<string, unknown[]>) {
+  const calls: BuilderCall[] = [];
+  const makeChain = () => {
+    const thenable = {
+      then(resolve: (value: unknown) => void) {
+        resolve(results.chainResult?.shift() ?? { data: [], error: null });
+      },
+    };
+    return new Proxy(thenable, {
+      get(target, prop: string) {
+        if (prop === "then") return target.then.bind(target);
+        if (["maybeSingle", "single"].includes(prop)) {
+          return () => {
+            calls.push({ method: prop, args: [] });
+            return (results[prop] ?? []).shift() ?? mockQueryResult(null);
+          };
+        }
+        return (...args: unknown[]) => {
+          calls.push({ method: prop, args });
+          return makeChain();
+        };
+      },
+    });
+  };
+  const from = vi.fn(() => makeChain());
+  const rpc = vi.fn((name: string, params: unknown) => {
+    calls.push({ method: "rpc", args: [name, params] });
+    return (results.rpc ?? []).shift() ?? mockQueryResult(null);
+  });
+  return {
+    client: { from, rpc } as unknown as Parameters<typeof createApplicationService>[0],
+    calls,
+    mocks: { from, rpc },
+  };
+}
+
+const VALID_INPUT = {
+  company: "Acme",
+  job_title: "Intern",
+  location: null,
+  country: null,
+  work_arrangement: null,
+  employment_type: null,
+  work_term_duration: null,
+  deadline: null,
+  salary_text: null,
+  education_requirements: [],
+  years_of_experience: null,
+  posting_url: null,
+  original_description: "Job text",
+  responsibilities: [],
+  qualifications: [],
+  creation_key: "11111111-1111-4111-8111-111111111111",
+  skills: [{ requirement_type: "required" as const, name: "TypeScript" }],
+};
+
+describe("createApplicationService", () => {
+  it("creates an application through the transactional RPC with normalized skills", async () => {
+    const supabase = mockSupabase({ rpc: [mockQueryResult("app-1")] });
+    const service = createApplicationService(supabase.client);
+
+    const id = await service.createApplication("user-a", VALID_INPUT);
+
+    expect(id).toBe("app-1");
+    const rpcCall = supabase.calls.find((call) => call.method === "rpc");
+    expect(rpcCall?.args[0]).toBe("create_application");
+    const params = rpcCall?.args[1] as Record<string, unknown>;
+    expect(params.p_user_id).toBe("user-a");
+    expect(params.p_skills).toEqual([
+      {
+        requirement_type: "required",
+        name: "TypeScript",
+        normalized_name: "typescript",
+        sort_order: 0,
+      },
+    ]);
+  });
+
+  it("scopes getApplication to the current user", async () => {
+    const supabase = mockSupabase({
+      maybeSingle: [mockQueryResult({ id: "app-1" })],
+    });
+    const service = createApplicationService(supabase.client);
+
+    const bundle = await service.getApplication("user-a", "app-1");
+    expect(bundle.application.id).toBe("app-1");
+    expect(bundle.skills).toEqual([]);
+    expect(bundle.events).toEqual([]);
+    expect(bundle.interviews).toEqual([]);
+  });
+
+  it("throws not found when the application does not belong to the user", async () => {
+    const supabase = mockSupabase({ maybeSingle: [mockQueryResult(null)] });
+    const service = createApplicationService(supabase.client);
+
+    await expect(service.getApplication("user-b", "app-of-a")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+
+  it("throws not found when deleting a missing or foreign application", async () => {
+    const supabase = mockSupabase({ chainResult: [mockQueryResult([])] });
+    const service = createApplicationService(supabase.client);
+
+    await expect(service.deleteApplication("user-b", "app-of-a")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+
+  it("duplicates through the RPC and treats null as not found", async () => {
+    const ok = mockSupabase({ rpc: [mockQueryResult("app-2")] });
+    expect(await createApplicationService(ok.client).duplicateApplication("user-a", "app-1")).toBe(
+      "app-2",
+    );
+
+    const missing = mockSupabase({ rpc: [mockQueryResult(null)] });
+    await expect(
+      createApplicationService(missing.client).duplicateApplication("user-a", "app-1"),
+    ).rejects.toMatchObject({ kind: "not_found" });
+  });
+
+  it("scopes notes saves to the owning user", async () => {
+    const supabase = mockSupabase({ maybeSingle: [mockQueryResult({ id: "app-1" })] });
+    const service = createApplicationService(supabase.client);
+
+    await service.saveNotes("user-a", "app-1", "hello");
+
+    const updateCall = supabase.calls.find((call) => call.method === "update");
+    expect((updateCall?.args[0] as { notes: string }).notes).toBe("hello");
+    expect(
+      supabase.calls.filter((call) => call.method === "eq" && call.args[0] === "user_id"),
+    ).toHaveLength(1);
+  });
+
+  it("throws not found when saving notes on a foreign application", async () => {
+    const supabase = mockSupabase({ maybeSingle: [mockQueryResult(null)] });
+    const service = createApplicationService(supabase.client);
+
+    await expect(service.saveNotes("user-b", "app-of-a", "x")).rejects.toMatchObject({
+      kind: "not_found",
+    });
+  });
+});

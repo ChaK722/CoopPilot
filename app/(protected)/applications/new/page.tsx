@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth/route-guards";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AddJobFlow } from "@/features/applications/add-job-flow";
 
 export const metadata: Metadata = {
   title: "Add Job",
@@ -15,20 +14,11 @@ export default async function AddJobPage() {
       <header>
         <h1 className="text-2xl font-semibold">Add a job</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Paste a description to analyze it, or enter the details manually.
+          Paste a description to analyze it, review every field, then save — or enter the details
+          manually.
         </p>
       </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming in Phase 3</CardTitle>
-          <CardDescription>
-            Job extraction, review, and manual entry arrive with the application management phase.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Button href="/dashboard">Back to dashboard</Button>
-        </CardContent>
-      </Card>
+      <AddJobFlow />
     </div>
   );
 }

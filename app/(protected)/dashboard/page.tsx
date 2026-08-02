@@ -40,14 +40,15 @@ export default async function DashboardPage() {
             Your applications
           </CardTitle>
           <CardDescription>
-            You have not saved any applications yet. Add your first job posting to get started.
+            Search, filter, and manage every application you have saved.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row">
-          <Button href="/applications/new">
-            Add Job
+          <Button href="/applications">
+            View applications
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Button>
+          <Button href="/applications/new">Add Job</Button>
           {!onboardingDone ? (
             <Button variant="outline" href="/onboarding">
               <Rocket className="h-4 w-4" aria-hidden="true" />

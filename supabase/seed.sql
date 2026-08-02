@@ -155,3 +155,159 @@ set
   github_url = excluded.github_url,
   demo_url = excluded.demo_url,
   updated_at = now();
+
+-- Phase 3 demo applications, skills, status history, and interviews.
+-- Fixed ids keep the seed repeatable and idempotent.
+insert into public.applications (
+  id, user_id, creation_key, company, job_title, location, country,
+  work_arrangement, employment_type, work_term_duration, deadline,
+  salary_text, education_requirements, years_of_experience, posting_url,
+  original_description, responsibilities, qualifications, status
+)
+select
+  v.id,
+  u.id,
+  v.creation_key,
+  v.company,
+  v.job_title,
+  v.location,
+  v.country,
+  v.work_arrangement,
+  v.employment_type,
+  v.work_term_duration,
+  v.deadline,
+  v.salary_text,
+  v.education_requirements,
+  v.years_of_experience,
+  v.posting_url,
+  v.original_description,
+  v.responsibilities,
+  v.qualifications,
+  v.status
+from auth.users u
+cross join (
+  values
+    (
+      'a0000000-0000-4000-8000-000000000101'::uuid,
+      'b0000000-0000-4000-8000-000000000101'::uuid,
+      'Example Tech Inc.', 'Software Developer Co-op', 'Toronto, ON', 'Canada',
+      'Hybrid', 'Co-op / Internship', '4 months', '2026-09-15'::date,
+      'Competitive hourly rate', array['Currently enrolled in a CS program'],
+      '0-2 years', 'https://example.com/careers/coop',
+      'Example Tech Inc. is hiring a Software Developer Co-op for the fall term.',
+      array['Build and maintain web application features'],
+      array['Experience with TypeScript or JavaScript'],
+      'saved'
+    ),
+    (
+      'a0000000-0000-4000-8000-000000000102'::uuid,
+      'b0000000-0000-4000-8000-000000000102'::uuid,
+      'Northwind Labs', 'QA Automation Intern', 'Remote (Canada)', 'Canada',
+      'Remote', 'Internship', '8 months', '2026-08-30'::date,
+      'CAD 30/hr', array[]::text[],
+      '0-1 years', null,
+      'Northwind Labs is looking for a QA Automation Intern to write end-to-end tests.',
+      array['Write and maintain end-to-end tests'],
+      array['Familiarity with Playwright or Cypress'],
+      'applied'
+    ),
+    (
+      'a0000000-0000-4000-8000-000000000103'::uuid,
+      'b0000000-0000-4000-8000-000000000103'::uuid,
+      'Maple Cloud Systems', 'Backend Developer Co-op', 'Waterloo, ON', 'Canada',
+      'On-site', 'Co-op', '4 months', '2026-08-20'::date,
+      'Competitive', array['Second-year CS or related program'],
+      null, 'https://maplecloud.example.com/careers',
+      'Maple Cloud Systems is hiring a Backend Developer Co-op for PostgreSQL-backed services.',
+      array['Build REST APIs', 'Optimize database queries'],
+      array['Experience with PostgreSQL', 'Experience with Node.js'],
+      'interview'
+    )
+) as v(
+  id, creation_key, company, job_title, location, country,
+  work_arrangement, employment_type, work_term_duration, deadline,
+  salary_text, education_requirements, years_of_experience, posting_url,
+  original_description, responsibilities, qualifications, status
+)
+where u.email = 'demo@cooppilot.local'
+on conflict (id) do update
+set
+  company = excluded.company,
+  job_title = excluded.job_title,
+  status = excluded.status,
+  original_description = excluded.original_description,
+  updated_at = now();
+
+insert into public.application_skills (
+  id, user_id, application_id, requirement_type, name, normalized_name, sort_order
+)
+select
+  ('a0000000-0000-4000-8000-' || lpad((skill.item ->> 'id_num')::text, 12, '0'))::uuid,
+  u.id,
+  (skill.item ->> 'application_id')::uuid,
+  (skill.item ->> 'requirement_type'),
+  (skill.item ->> 'name'),
+  lower((skill.item ->> 'name')),
+  (skill.item ->> 'sort_order')::int
+from auth.users u
+cross join jsonb_array_elements('[
+  {"id_num":1001,"application_id":"a0000000-0000-4000-8000-000000000101","requirement_type":"required","name":"TypeScript","sort_order":0},
+  {"id_num":1002,"application_id":"a0000000-0000-4000-8000-000000000101","requirement_type":"required","name":"React","sort_order":1},
+  {"id_num":1003,"application_id":"a0000000-0000-4000-8000-000000000101","requirement_type":"preferred","name":"AWS","sort_order":2},
+  {"id_num":1004,"application_id":"a0000000-0000-4000-8000-000000000102","requirement_type":"required","name":"Playwright","sort_order":0},
+  {"id_num":1005,"application_id":"a0000000-0000-4000-8000-000000000102","requirement_type":"preferred","name":"Python","sort_order":1},
+  {"id_num":1006,"application_id":"a0000000-0000-4000-8000-000000000103","requirement_type":"required","name":"PostgreSQL","sort_order":0},
+  {"id_num":1007,"application_id":"a0000000-0000-4000-8000-000000000103","requirement_type":"required","name":"Node.js","sort_order":1},
+  {"id_num":1008,"application_id":"a0000000-0000-4000-8000-000000000103","requirement_type":"preferred","name":"Docker","sort_order":2}
+]'::jsonb) as skill(item)
+where u.email = 'demo@cooppilot.local'
+on conflict (id) do update
+set requirement_type = excluded.requirement_type,
+    name = excluded.name,
+    normalized_name = excluded.normalized_name;
+
+insert into public.application_status_events (
+  id, user_id, application_id, from_status, to_status, changed_at
+)
+select
+  ('a0000000-0000-4000-8000-' || lpad((ev.item ->> 'id_num')::text, 12, '0'))::uuid,
+  u.id,
+  (ev.item ->> 'application_id')::uuid,
+  (ev.item ->> 'from_status'),
+  (ev.item ->> 'to_status'),
+  now() - ((6 - (ev.item ->> 'seq')::int) * interval '1 day')
+from auth.users u
+cross join jsonb_array_elements('[
+  {"id_num":2001,"application_id":"a0000000-0000-4000-8000-000000000101","from_status":null,"to_status":"saved","seq":1},
+  {"id_num":2002,"application_id":"a0000000-0000-4000-8000-000000000102","from_status":null,"to_status":"saved","seq":2},
+  {"id_num":2003,"application_id":"a0000000-0000-4000-8000-000000000102","from_status":"saved","to_status":"applied","seq":3},
+  {"id_num":2004,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":null,"to_status":"saved","seq":4},
+  {"id_num":2005,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":"saved","to_status":"applied","seq":5},
+  {"id_num":2006,"application_id":"a0000000-0000-4000-8000-000000000103","from_status":"applied","to_status":"interview","seq":6}
+]'::jsonb) as ev(item)
+where u.email = 'demo@cooppilot.local'
+on conflict (id) do update
+set from_status = excluded.from_status,
+    to_status = excluded.to_status,
+    changed_at = excluded.changed_at;
+
+insert into public.interviews (
+  id, user_id, application_id, interview_type, scheduled_at,
+  location_or_link, notes
+)
+select
+  'a0000000-0000-4000-8000-000000000401',
+  u.id,
+  'a0000000-0000-4000-8000-000000000103',
+  'Technical',
+  now() + interval '3 days',
+  'https://meet.example.com/maplecloud',
+  'Two 45-minute rounds: coding + system design.'
+from auth.users u
+where u.email = 'demo@cooppilot.local'
+on conflict (id) do update
+set interview_type = excluded.interview_type,
+    scheduled_at = excluded.scheduled_at,
+    location_or_link = excluded.location_or_link,
+    notes = excluded.notes,
+    updated_at = now();

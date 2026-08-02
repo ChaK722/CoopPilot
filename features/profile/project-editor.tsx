@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
-import { TagInput } from "@/features/profile/tag-input";
+import { TagInput } from "@/components/ui/tag-input";
 import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import {
   createProject,

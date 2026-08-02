@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
-import { TagInput } from "@/features/profile/tag-input";
+import { TagInput } from "@/components/ui/tag-input";
 import { UnsavedChangesNotice } from "@/features/profile/unsaved-changes";
 import { completeOnboarding, saveBasicInfo } from "@/features/profile/profile-actions";
 import { profileBasicSchema, type ProfileBasicValues } from "@/lib/validation/profile";

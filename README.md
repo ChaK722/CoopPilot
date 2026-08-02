@@ -5,13 +5,15 @@ job seekers: profile management, job extraction, application tracking, AI
 match analysis, cover letters, interview preparation, and analytics — all
 usable without an external AI API key (Demo Mode).
 
-> Status: **Phases 1–2 implemented.** Phase 1: public pages, protected
+> Status: **Phases 1–3 implemented.** Phase 1: public pages, protected
 > application shell, Supabase authentication, RLS-protected profile baseline,
-> repeatable demo seed. Phase 2: complete user profile — basic information,
-> job preferences, education, skills (six categories with deduplication),
-> work experience, and projects, all persisted in PostgreSQL with RLS and
-> server-side validation. Later phases (applications, AI, analytics,
-> deployment) are tracked in `docs/implementation-plan.md`.
+> repeatable demo seed. Phase 2: complete user profile (basic information,
+> preferences, education, skills, experience, projects). Phase 3: job
+> management — Demo analysis with review/manual entry, transactional
+> application creation, Job Detail with notes autosave and interview dates,
+> edit/duplicate/delete, and a searchable/filterable/sortable applications
+> table. Later phases (board, AI, analytics, deployment) are tracked in
+> `docs/implementation-plan.md`.
 
 ## Development environment and CI
 
