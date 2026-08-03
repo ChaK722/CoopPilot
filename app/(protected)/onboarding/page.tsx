@@ -62,7 +62,10 @@ export default async function OnboardingPage() {
         </p>
         {basicRow?.onboarding_completed_at ? (
           <p className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" aria-hidden="true" />
+            <CheckCircle2
+              className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400"
+              aria-hidden="true"
+            />
             Onboarding complete
           </p>
         ) : null}

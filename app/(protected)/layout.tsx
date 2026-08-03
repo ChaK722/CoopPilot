@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/supabase-server";
 import { SidebarContent } from "@/features/shell/sidebar";
 import { MobileNav } from "@/features/shell/mobile-nav";
+import { SkipLink } from "@/components/skip-link";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -13,6 +14,7 @@ export default async function ProtectedLayout({ children }: { children: React.Re
 
   return (
     <div className="min-h-screen">
+      <SkipLink />
       <div className="lg:hidden sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
         <MobileNav email={email} />
         <span className="text-sm font-semibold">CoopPilot</span>
@@ -23,7 +25,11 @@ export default async function ProtectedLayout({ children }: { children: React.Re
             <SidebarContent email={email} />
           </div>
         </aside>
-        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="min-w-0 flex-1 p-4 outline-none focus:outline-none sm:p-6 lg:p-8"
+        >
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

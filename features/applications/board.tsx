@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { AlertTriangle, CalendarClock, GripVertical } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { errorResultMessage } from "@/lib/errors";
 import { updateApplicationStatus } from "@/features/applications/application-actions";
 import { DatePromptDialog } from "@/features/applications/date-applied-dialog";
 import {
@@ -204,8 +205,8 @@ export function ApplicationBoard({ initial, today }: BoardProps) {
             : app,
         ),
       );
-      setAnnouncement(result.error);
-      toast(result.error, "error");
+      setAnnouncement(errorResultMessage(result));
+      toast(errorResultMessage(result), "error");
     } else {
       setAnnouncement(`Moved to ${APPLICATION_STATUS_LABELS[toStatus]}.`);
       router.refresh();

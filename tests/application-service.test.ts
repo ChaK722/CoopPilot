@@ -111,6 +111,43 @@ describe("createApplicationService", () => {
     expect(supabase.calls.some((call) => call.method === "maybeSingle")).toBe(false);
   });
 
+  it("routes search through the parameterized RPC instead of .or() strings", async () => {
+    const supabase = mockSupabase({
+      rpc: [mockQueryResult([{ application_id: "app-1" }])],
+      chainResult: [mockQueryResult([{ id: "app-1", company: "Acme" }])],
+    });
+    const service = createApplicationService(supabase.client);
+
+    const rows = await service.listApplications("user-a", {
+      search: "Acme, ( ) ' \" % _ \\",
+    });
+
+    expect(supabase.mocks.rpc).toHaveBeenCalledWith("search_application_ids", {
+      p_user_id: "user-a",
+      p_term: "Acme, ( ) ' \" % _ \\",
+      p_requirement_type: null,
+    });
+    expect(rows).toHaveLength(1);
+    expect(supabase.calls.some((call) => call.method === "or")).toBe(false);
+  });
+
+  it("routes required-skill filtering through the parameterized RPC", async () => {
+    const supabase = mockSupabase({
+      rpc: [mockQueryResult([{ application_id: "app-2" }])],
+      chainResult: [mockQueryResult([{ id: "app-2", company: "Beta" }])],
+    });
+    const service = createApplicationService(supabase.client);
+
+    await service.listApplications("user-a", { requiredSkill: "TypeScript" });
+
+    expect(supabase.mocks.rpc).toHaveBeenCalledWith("search_application_ids", {
+      p_user_id: "user-a",
+      p_term: "TypeScript",
+      p_requirement_type: "required",
+    });
+    expect(supabase.calls.some((call) => call.method === "or")).toBe(false);
+  });
+
   it("creates an application through the transactional RPC with normalized skills", async () => {
     const supabase = mockSupabase({ rpc: [mockQueryResult("app-1")] });
     const service = createApplicationService(supabase.client);

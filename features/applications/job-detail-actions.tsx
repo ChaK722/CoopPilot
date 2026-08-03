@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Archive, Copy, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { errorResultMessage } from "@/lib/errors";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import {
   archiveApplication,
@@ -32,7 +33,7 @@ export function JobDetailActions({
     const result = await duplicateApplication(applicationId);
     setDuplicating(false);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Application duplicated.", "success");
@@ -46,7 +47,7 @@ export function JobDetailActions({
     setDeleting(false);
     setConfirmOpen(false);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Application deleted.", "success");
@@ -60,7 +61,7 @@ export function JobDetailActions({
     setArchiving(false);
     setArchiveOpen(false);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Application archived.", "success");

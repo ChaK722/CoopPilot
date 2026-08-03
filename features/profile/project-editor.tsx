@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,7 +115,7 @@ export function ProjectEditor({ initial }: { initial: ProjectRow[] }) {
     setDeleting(false);
     setPendingDelete(null);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Project deleted.", "success");
@@ -124,7 +125,7 @@ export function ProjectEditor({ initial }: { initial: ProjectRow[] }) {
   async function move(row: ProjectRow, direction: "up" | "down") {
     const result = await moveProject(row.id, direction);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     router.refresh();

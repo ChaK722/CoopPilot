@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -112,7 +113,7 @@ export function EducationEditor({ initial }: { initial: EducationRow[] }) {
     setDeleting(false);
     setPendingDelete(null);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Education deleted.", "success");
@@ -122,7 +123,7 @@ export function EducationEditor({ initial }: { initial: EducationRow[] }) {
   async function move(row: EducationRow, direction: "up" | "down") {
     const result = await moveEducation(row.id, direction);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     router.refresh();

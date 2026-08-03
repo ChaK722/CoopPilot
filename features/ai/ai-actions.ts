@@ -8,7 +8,7 @@ import { AppError, safeErrorMessage } from "@/lib/errors";
 import { idSchema } from "@/lib/validation/shared";
 import { createAIService } from "@/features/ai/ai-service";
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult = { ok: true } | { ok: false; error: string; reference: string };
 
 const idempotencyKeySchema = z.string().uuid("Invalid request key.");
 const contentSchema = z.object({
@@ -16,11 +16,15 @@ const contentSchema = z.object({
 });
 const versionSchema = z.number().int().min(1);
 
-function toActionResult(error: unknown): ActionResult {
+function toActionResult(error: unknown): { ok: false; error: string; reference: string } {
   if (error instanceof AppError) {
-    return { ok: false, error: error.safeMessage };
+    return { ok: false, error: error.safeMessage, reference: error.correlationId };
   }
-  return { ok: false, error: safeErrorMessage(error) };
+  return { ok: false, error: safeErrorMessage(error), reference: crypto.randomUUID() };
+}
+
+function invalidRequest(message: string): { ok: false; error: string; reference: string } {
+  return { ok: false, error: message, reference: crypto.randomUUID() };
 }
 
 async function getService() {
@@ -41,7 +45,7 @@ export async function generateMatchAnalysis(
   const appParsed = idSchema.safeParse(applicationId);
   const keyParsed = idempotencyKeySchema.safeParse(idempotencyKey);
   if (!appParsed.success || !keyParsed.success) {
-    return { ok: false, error: "Invalid request." };
+    return invalidRequest("Invalid request.");
   }
   try {
     const { user, service } = await getService();
@@ -60,7 +64,7 @@ export async function generateCoverLetter(
   const appParsed = idSchema.safeParse(applicationId);
   const keyParsed = idempotencyKeySchema.safeParse(idempotencyKey);
   if (!appParsed.success || !keyParsed.success) {
-    return { ok: false, error: "Invalid request." };
+    return invalidRequest("Invalid request.");
   }
   try {
     const { user, service } = await getService();
@@ -79,7 +83,7 @@ export async function generateInterviewPrep(
   const appParsed = idSchema.safeParse(applicationId);
   const keyParsed = idempotencyKeySchema.safeParse(idempotencyKey);
   if (!appParsed.success || !keyParsed.success) {
-    return { ok: false, error: "Invalid request." };
+    return invalidRequest("Invalid request.");
   }
   try {
     const { user, service } = await getService();
@@ -98,7 +102,7 @@ export async function saveCoverLetterEdit(
   const appParsed = idSchema.safeParse(applicationId);
   const contentParsed = contentSchema.safeParse(content);
   if (!appParsed.success || !contentParsed.success) {
-    return { ok: false, error: "Invalid request." };
+    return invalidRequest("Invalid request.");
   }
   try {
     const { user, service } = await getService();
@@ -117,7 +121,7 @@ export async function restoreCoverLetterVersion(
   const appParsed = idSchema.safeParse(applicationId);
   const versionParsed = versionSchema.safeParse(version);
   if (!appParsed.success || !versionParsed.success) {
-    return { ok: false, error: "Invalid request." };
+    return invalidRequest("Invalid request.");
   }
   try {
     const { user, service } = await getService();

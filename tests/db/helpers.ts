@@ -122,6 +122,16 @@ export async function createUser(admin: pg.Client, email: string): Promise<strin
  * auth.uid() = subject.
  */
 export async function asUser(port: number, subject: string, sql: string): Promise<pg.QueryResult> {
+  return asUserParams(port, subject, sql, []);
+}
+
+/** asUser with parameterized SQL, safe for arbitrary user-controlled values. */
+export async function asUserParams(
+  port: number,
+  subject: string,
+  sql: string,
+  params: unknown[],
+): Promise<pg.QueryResult> {
   const client = new Client({
     host: "127.0.0.1",
     port,
@@ -137,7 +147,7 @@ export async function asUser(port: number, subject: string, sql: string): Promis
       "request.jwt.claims",
       JSON.stringify({ sub: subject, role: "authenticated" }),
     ]);
-    const result = await client.query(sql);
+    const result = await client.query(sql, params);
     await client.query("commit");
     return result;
   } catch (error) {

@@ -4,6 +4,7 @@ import { requireGuest } from "@/lib/auth/route-guards";
 import { LoginForm } from "@/features/auth/login-form";
 import { CoopPilotLogo } from "@/components/brand/logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { SkipLink } from "@/components/skip-link";
 
 export const metadata: Metadata = {
   title: "Log in",
@@ -14,13 +15,18 @@ export default async function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <SkipLink />
       <header className="flex items-center justify-between px-4 py-4 sm:px-6">
         <Link href="/" aria-label="CoopPilot home" className="rounded-md">
           <CoopPilotLogo />
         </Link>
         <ThemeToggle />
       </header>
-      <main className="flex flex-1 items-center justify-center px-4 py-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex flex-1 items-center justify-center px-4 py-8 outline-none focus:outline-none"
+      >
         <div className="w-full max-w-md">
           <h1 className="text-2xl font-semibold">Welcome back</h1>
           <p className="mt-1 text-sm text-muted-foreground">Log in to continue your job search.</p>

@@ -30,8 +30,28 @@ export interface AIProvider {
  * external provider slot is reserved for future configuration.
  */
 export async function getAIProvider(): Promise<AIProvider> {
+  if (process.env.E2E_AI_FAILURE === "1") {
+    assertE2EFailureAllowed();
+    const { createFailingAIProvider } = await import("@/features/ai/failing-provider");
+    return createFailingAIProvider();
+  }
   const { createDemoAIProvider } = await import("@/features/ai/demo-provider");
   return createDemoAIProvider();
+}
+
+/**
+ * The E2E failure hook is test-only: it fails fast in production builds and
+ * requires a localhost-only Supabase URL so it can never be enabled against
+ * a real deployment.
+ */
+function assertE2EFailureAllowed(): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("E2E_AI_FAILURE is not allowed in production.");
+  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  if (!/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(url)) {
+    throw new Error("E2E_AI_FAILURE requires a localhost-only Supabase URL.");
+  }
 }
 
 /** Bounded execution for provider calls; Demo providers resolve instantly. */

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { Bot, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,7 +62,7 @@ export function AddJobFlow() {
     setAnalyzing(false);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     setReviewInitial({

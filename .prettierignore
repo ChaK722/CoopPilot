@@ -5,3 +5,8 @@ coverage
 package-lock.json
 supabase/.temp
 .tinbase
+.env.example
+playwright-report
+playwright-report-ai-failure
+test-results
+blob-report

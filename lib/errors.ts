@@ -39,3 +39,11 @@ export function safeErrorMessage(error: unknown): string {
   }
   return "Something went wrong. Please try again.";
 }
+
+/**
+ * Formats a server-action error for user-visible surfaces. The reference ID
+ * lets users quote the incident without exposing the underlying cause.
+ */
+export function errorResultMessage(result: { error: string; reference?: string }): string {
+  return result.reference ? `${result.error} (Reference: ${result.reference})` : result.error;
+}

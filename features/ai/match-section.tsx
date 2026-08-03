@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { RefreshCw, Sparkles, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -50,7 +51,7 @@ export function MatchSection({
     const result = await generateMatchAnalysis(applicationId, crypto.randomUUID());
     setGenerating(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     toast("Match analysis generated.", "success");

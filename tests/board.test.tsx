@@ -174,6 +174,9 @@ describe("ApplicationBoard", () => {
       const link = screen.getByRole("link");
       const select = screen.getByRole("combobox", { name: /Status for Acme/ });
 
+      // Prevent jsdom's default navigation so the click only exercises the
+      // link's accessible behaviour (the real app intercepts navigation).
+      link.addEventListener("click", (event) => event.preventDefault());
       await user.click(link);
       expect(link.getAttribute("href")).toBe("/applications/a");
 

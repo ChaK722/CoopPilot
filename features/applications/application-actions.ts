@@ -19,15 +19,19 @@ import { createApplicationService } from "@/features/applications/application-se
 import { createAIService } from "@/features/ai/ai-service";
 import { jobExtractionResultSchema } from "@/features/ai/extraction-schema";
 
-type ActionResult = { ok: true } | { ok: false; error: string };
+type ActionResult = { ok: true } | { ok: false; error: string; reference: string };
 
 const applicationIdSchema = idSchema;
 
-function toActionResult(error: unknown): { ok: false; error: string } {
+function toActionResult(error: unknown): { ok: false; error: string; reference: string } {
   if (error instanceof AppError) {
-    return { ok: false, error: error.safeMessage };
+    return { ok: false, error: error.safeMessage, reference: error.correlationId };
   }
-  return { ok: false, error: safeErrorMessage(error) };
+  return { ok: false, error: safeErrorMessage(error), reference: crypto.randomUUID() };
+}
+
+function invalidRequest(message: string): { ok: false; error: string; reference: string } {
+  return { ok: false, error: message, reference: crypto.randomUUID() };
 }
 
 async function getService() {
@@ -56,7 +60,7 @@ export async function analyzeJob(
   const parsed = analysisInputSchema.safeParse(input);
   const keyParsed = z.string().uuid().safeParse(idempotencyKey);
   if (!parsed.success || !keyParsed.success) {
-    return { ok: false, error: "Please paste a non-empty job description." };
+    return invalidRequest("Please paste a non-empty job description.");
   }
   try {
     const user = await requireUser();
@@ -80,7 +84,7 @@ export async function createApplication(
 ): Promise<{ ok: true; applicationId: string } | { ok: false; error: string }> {
   const parsed = createApplicationInputSchema.safeParse(input);
   if (!parsed.success) {
-    return { ok: false, error: "Please fix the highlighted fields." };
+    return invalidRequest("Please fix the highlighted fields.");
   }
   try {
     const { user, service } = await getService();
@@ -96,7 +100,7 @@ export async function updateApplication(id: unknown, input: unknown): Promise<Ac
   const idParsed = applicationIdSchema.safeParse(id);
   const inputParsed = applicationSchema.safeParse(input);
   if (!idParsed.success || !inputParsed.success) {
-    return { ok: false, error: "Please fix the highlighted fields." };
+    return invalidRequest("Please fix the highlighted fields.");
   }
   try {
     const { user, service } = await getService();
@@ -110,7 +114,7 @@ export async function updateApplication(id: unknown, input: unknown): Promise<Ac
 
 export async function deleteApplication(id: unknown): Promise<ActionResult> {
   const idParsed = applicationIdSchema.safeParse(id);
-  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  if (!idParsed.success) return invalidRequest("Invalid identifier.");
   try {
     const { user, service } = await getService();
     await service.deleteApplication(user.id, idParsed.data);
@@ -125,7 +129,7 @@ export async function duplicateApplication(
   id: unknown,
 ): Promise<{ ok: true; applicationId: string } | { ok: false; error: string }> {
   const idParsed = applicationIdSchema.safeParse(id);
-  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  if (!idParsed.success) return invalidRequest("Invalid identifier.");
   try {
     const { user, service } = await getService();
     const newId = await service.duplicateApplication(user.id, idParsed.data);
@@ -140,7 +144,7 @@ export async function saveApplicationNotes(id: unknown, notes: unknown): Promise
   const idParsed = applicationIdSchema.safeParse(id);
   const notesParsed = notesSchema.safeParse(notes);
   if (!idParsed.success || !notesParsed.success) {
-    return { ok: false, error: "Could not save your notes." };
+    return invalidRequest("Could not save your notes.");
   }
   try {
     const { user, service } = await getService();
@@ -159,7 +163,7 @@ export async function createInterview(
   const idParsed = applicationIdSchema.safeParse(applicationId);
   const inputParsed = interviewSchema.safeParse(input);
   if (!idParsed.success || !inputParsed.success) {
-    return { ok: false, error: "Please fix the highlighted fields." };
+    return invalidRequest("Please fix the highlighted fields.");
   }
   try {
     const { user, service } = await getService();
@@ -173,7 +177,7 @@ export async function createInterview(
 
 export async function deleteInterview(id: unknown): Promise<ActionResult> {
   const idParsed = idSchema.safeParse(id);
-  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  if (!idParsed.success) return invalidRequest("Invalid identifier.");
   try {
     const { user, service } = await getService();
     const deleted = await service.deleteInterview(user.id, idParsed.data);
@@ -193,7 +197,7 @@ export async function updateApplicationStatus(
   const statusParsed = applicationStatusSchema.safeParse(status);
   const dateParsed = optionalDate.safeParse(dateApplied);
   if (!idParsed.success || !statusParsed.success || !dateParsed.success) {
-    return { ok: false, error: "Invalid status update request." };
+    return invalidRequest("Invalid status update request.");
   }
   try {
     const { user, service } = await getService();
@@ -207,7 +211,7 @@ export async function updateApplicationStatus(
 
 export async function archiveApplication(id: unknown): Promise<ActionResult> {
   const idParsed = idSchema.safeParse(id);
-  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  if (!idParsed.success) return invalidRequest("Invalid identifier.");
   try {
     const { user, service } = await getService();
     await service.archiveApplication(user.id, idParsed.data);
@@ -221,7 +225,7 @@ export async function archiveApplication(id: unknown): Promise<ActionResult> {
 
 export async function restoreApplication(id: unknown): Promise<ActionResult> {
   const idParsed = idSchema.safeParse(id);
-  if (!idParsed.success) return { ok: false, error: "Invalid identifier." };
+  if (!idParsed.success) return invalidRequest("Invalid identifier.");
   try {
     const { user, service } = await getService();
     await service.restoreApplication(user.id, idParsed.data);

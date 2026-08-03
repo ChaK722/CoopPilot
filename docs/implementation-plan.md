@@ -1011,6 +1011,88 @@ The implementation stops at the MVP described above. It will not include:
 
 Any later request that touches these areas should be treated as a separate post-MVP decision and must not delay completion of this plan.
 
+## Phase 7 status — 2026-08-02
+
+Status: **local quality and deployment readiness complete; production
+deployment blocked by unavailable credentials.** `phase-7-complete` is NOT
+created; `docs/production-smoke-test.md` is marked NOT RUN.
+
+### 7A responsive/accessibility
+
+- Playwright + `@axe-core/playwright` added (pinned), `playwright.config.ts`,
+  `tests/e2e/`, and `test:e2e`/`test:a11y` scripts.
+- Axe scans cover public pages, all authenticated pages, and the destructive
+  dialog in light/dark at 1280 px and 375 px: serious/critical = 0.
+- Fixes: toast live-region role, muted-foreground contrast, active nav and
+  theme-radio contrast, emerald checkmark contrast (light/dark), skip links
+  with focusable `<main>`, and `tabIndex` support.
+- Keyboard-only E2E: skip link, signup, onboarding, navigation, Add Job,
+  Settings theme radios. Board keyboard drag and dialog focus behavior are
+  covered by unit tests.
+- `/settings` page added (canonical email, System/Light/Dark theme with
+  persistence, sign out) and added to desktop/mobile navigation.
+
+### 7B reliability/security/performance
+
+- Correlation IDs: server actions return `reference` and every user-facing
+  error surface formats `(Reference: <id>)`; `error.tsx` boundaries show
+  `Reference: <digest>`; no cause/stack/SQL is exposed.
+- Failure simulation tests cover archive/delete failures and cancellation,
+  notes autosave failure, clipboard failure, AI failure fallback (E2E),
+  analytics failure, status rollback, and safe error mapping.
+- RLS full matrix (`tests/rls-full-matrix.test.ts`): 12 tables x A/B x
+  select/insert/update/delete plus cross-user child-row attempts.
+- RPC catalog audit (`tests/rpc-security-audit.test.ts`): search_path,
+  no dynamic SQL, auth.uid() checks, PUBLIC/anon/authenticated ACLs.
+  Migration `20260802000009_phase7_security_hardening.sql` removed default
+  PUBLIC EXECUTE from older definer functions and added parameterized
+  `search_application_ids`.
+- XSS plain-text tests, URL scheme security tests (including interview
+  links), search-injection tests (parameterized RPC, malicious characters),
+  secret scan script (`npm run secret:scan`), security headers in the proxy
+  (nosniff, referrer policy, permissions policy, frame denial, HTTPS-only
+  HSTS).
+- Query-count tests for Dashboard/Analytics/Board/Applications/Job
+  Detail/Profile; EXPLAIN + index audit (`tests/explain-plan.test.ts`);
+  results in `docs/performance-audit.md`.
+- Dependency audit: `npm audit` and `npm audit --omit=dev` report 0
+  vulnerabilities after `$postcss` and `sharp` overrides; install-script
+  packages documented in `docs/security-audit.md`.
+
+### 7C Playwright
+
+- Repeatable harness: `scripts/e2e/start-backend.mjs` (fresh tinbase temp DB,
+  migrations applied, keys written to a gitignored JSON file),
+  `scripts/e2e/start-web.mjs` (production `next build` + `next start`),
+  `scripts/e2e/start-web-dev.mjs` (dev server for the AI-failure project).
+- Core path (signup/onboarding/analyze/review/save/status/match/cover
+  letter edit+copy/interview prep/dashboard+analytics/logout/login
+  persistence), alternative paths (manual entry, empty dashboard, deadline
+  boundaries, duplicate clicks, archive/restore, delete cancel/confirm,
+  board score), two-user isolation with a direct RLS REST check, keyboard
+  path, and AI-failure fallback all pass.
+- Console/hydration strict mode with two documented precise exceptions
+  (`net::ERR_ABORTED` client cancellations and dev-only HMR websocket
+  errors); no broad ignore lists.
+
+### 7D documentation/deployment prep
+
+- New docs: `manual-test-checklist.md`, `deployment.md`,
+  `production-smoke-test.md` (NOT RUN), `security-audit.md`,
+  `accessibility-audit.md`, `performance-audit.md`; README rewritten with
+  routes, E2E, deployment, troubleshooting, limitations, and security
+  reporting.
+- `npm run predeploy:check` verifies build, env schema, migration order/
+  cleanliness, no test flags in production, secret scan, and required docs.
+- GitHub Actions: checkout/setup-node v5, secret scan + production audit in
+  Job 1, E2E + accessibility Job 2 with Playwright artifact upload on
+  failure, minimal permissions, concurrency cancellation.
+
+Phase 7 completion and `phase-7-complete` require managed Supabase + Vercel
+deployment and a passing production smoke test; those remain blocked on
+credentials. Phase 8+ has not been started; no out-of-scope feature was
+added.
+
 ## 10. Phase completion evidence
 
 At the end of each phase, the implementation report should include:

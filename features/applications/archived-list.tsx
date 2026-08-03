@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { Archive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -24,7 +25,7 @@ export function ArchivedApplicationsList({ initial }: { initial: ArchivedApplica
   async function handleRestore(id: string) {
     const result = await restoreApplication(id);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Application restored.", "success");

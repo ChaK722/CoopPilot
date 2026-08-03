@@ -42,6 +42,26 @@ export interface ApplicationListFilters {
 }
 
 export function createApplicationService(supabase: DbClient) {
+  async function searchIds(
+    userId: string,
+    term: string,
+    requirementType?: string,
+  ): Promise<string[]> {
+    const { data, error } = await supabase.rpc("search_application_ids", {
+      p_user_id: userId,
+      p_term: term,
+      p_requirement_type: requirementType ?? null,
+    });
+    if (error) {
+      throw new AppError(
+        "database_unavailable",
+        "Could not load your applications. Please try again.",
+        error,
+      );
+    }
+    return (data ?? []).map((row: { application_id: string }) => row.application_id);
+  }
+
   return {
     async getApplication(userId: string, applicationId: string) {
       const [application, skills, events, interviews] = await Promise.all([
@@ -100,22 +120,8 @@ export function createApplicationService(supabase: DbClient) {
 
       if (search?.trim()) {
         const term = search.trim();
-        const { data: skillRows } = await supabase
-          .from("application_skills")
-          .select("application_id")
-          .eq("user_id", userId)
-          .or(`name.ilike.%${escapeLike(term)}%,normalized_name.ilike.%${escapeLike(term)}%`)
-          .limit(LIST_LIMIT);
-        const skillIds = (skillRows ?? []).map((row) => row.application_id);
-        const clauses = [
-          `company.ilike.%${escapeLike(term)}%`,
-          `job_title.ilike.%${escapeLike(term)}%`,
-          `notes.ilike.%${escapeLike(term)}%`,
-        ];
-        if (skillIds.length > 0) {
-          clauses.push(`id.in.(${skillIds.join(",")})`);
-        }
-        query = query.or(clauses.join(","));
+        const ids = await searchIds(userId, term);
+        query = query.in("id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"]);
       }
 
       if (statuses && statuses.length > 0) {
@@ -132,14 +138,7 @@ export function createApplicationService(supabase: DbClient) {
       }
       if (requiredSkill?.trim()) {
         const term = requiredSkill.trim();
-        const { data: skillRows } = await supabase
-          .from("application_skills")
-          .select("application_id")
-          .eq("user_id", userId)
-          .eq("requirement_type", "required")
-          .or(`name.ilike.%${escapeLike(term)}%,normalized_name.ilike.%${escapeLike(term)}%`)
-          .limit(LIST_LIMIT);
-        const ids = (skillRows ?? []).map((row) => row.application_id);
+        const ids = await searchIds(userId, term, "required");
         query = query.in("id", ids.length > 0 ? ids : ["00000000-0000-0000-0000-000000000000"]);
       }
       if (filters.deadlineFrom) {

@@ -5,7 +5,9 @@ job seekers: profile management, job extraction, application tracking, AI
 match analysis, cover letters, interview preparation, and analytics — all
 usable without an external AI API key (Demo Mode).
 
-> Status: **Phases 1–6 implemented.** Phase 1: public pages, protected
+> Status: **Phases 1–6 implemented; Phase 7 local quality and deployment
+> readiness complete (production deployment blocked by unavailable
+> credentials).** Phase 1: public pages, protected
 > application shell, Supabase authentication, RLS-protected profile baseline,
 > repeatable demo seed. Phase 2: complete user profile (basic information,
 > preferences, education, skills, experience, projects). Phase 3: job
@@ -24,8 +26,12 @@ usable without an external AI API key (Demo Mode).
 > summary metrics, applications-by-status/submitted-over-time/most-requested-
 > skills charts, upcoming/recent/requiring-action lists, and a detailed
 > `/analytics` page, all backed by one database analytics snapshot RPC; the
-> board also shows each card's latest match score. Phase 7 (quality audit and
-> deployment) is tracked in `docs/implementation-plan.md`.
+> board also shows each card's latest match score. Phase 7 adds Playwright
+> E2E/accessibility, security/performance audits, a Settings page, security
+> headers, secret scanning, and deployment preparation. Production
+> deployment requires Vercel + managed Supabase credentials and is not yet
+> complete; see `docs/production-smoke-test.md` (status: NOT RUN) and
+> `docs/deployment.md`.
 
 ## Development environment and CI
 
@@ -109,6 +115,10 @@ npm test            # Vitest unit + RLS integration tests
 npm run format:check
 npm run verify      # all of the above
 npm run build       # production build
+npm run test:e2e    # Playwright core/alternative/two-user/accessibility
+npm run test:a11y   # axe accessibility tests (@a11y)
+npm run secret:scan # committed-file secret scan
+npm run predeploy:check  # pre-deployment gate
 ```
 
 The RLS integration tests boot a real embedded PostgreSQL, apply the
@@ -154,9 +164,66 @@ supabase/       Migrations and seed
 tests/          Unit and RLS integration tests
 ```
 
+## Routes
+
+- Public: `/` (landing), `/signup`, `/login`.
+- Protected: `/onboarding`, `/dashboard`, `/analytics`, `/applications`,
+  `/applications/new`, `/applications/board`, `/applications/[id]`,
+  `/applications/[id]/edit`, `/profile`, `/archive`, `/settings`.
+
+Every protected route verifies the server session (middleware is not the
+authorization boundary). `/settings` shows the canonical Auth email, the
+System/Light/Dark theme choice (persisted), and sign out.
+
+## E2E and accessibility
+
+```bash
+npx playwright install chromium   # once per machine
+npm run test:e2e                  # core path, alternatives, two-user, keyboard
+npm run test:a11y                 # axe scans (@a11y)
+npx playwright test --config=playwright.ai-failure.config.ts  # AI failure fallback
+```
+
+E2E runs are fully self-contained: `scripts/e2e/start-backend.mjs` boots a
+local tinbase backend with a fresh temporary database (all migrations
+applied) and `scripts/e2e/start-web.mjs` builds and serves the production
+Next server against it. The AI-failure spec runs a dev server with the
+test-only `E2E_AI_FAILURE=1` flag, which is rejected in production and
+requires a localhost Supabase URL. No developer database state or
+production credentials are used.
+
+## Troubleshooting
+
+- **npm cache permission errors (Windows):** point npm at a writable cache
+  for one-off tooling, e.g.
+  `npm_config_cache=... npm ci` (the workspace cache is gitignored).
+- **Port conflicts:** the E2E harness uses 54329/54330 (backend) and
+  3100/3102 (web). Stop anything already listening on those ports.
+- **Stale dev chunks after environment changes:** `next dev` bakes
+  `NEXT_PUBLIC_*` at compile time; delete `.next` before restarting when the
+  backend URL changes. `scripts/e2e/start-web-dev.mjs` does this
+  automatically.
+- **Local dev server lock:** only one `next dev` can run per checkout; stop
+  the existing server before starting another.
+
+## Known limitations
+
+- Demo Mode is the only implemented AI mode; the external provider adapter
+  is explicitly deferred.
+- Production deployment (Vercel + managed Supabase) and the production smoke
+  test are not complete — no credentials are available in the current
+  environment (`docs/production-smoke-test.md`).
+- Managed Supabase migration/JWT/RLS verification is a deployment-time
+  checklist item.
+
+## Security reporting
+
+Please report security issues privately to the repository owner via GitHub
+private vulnerability reporting. Do not open a public issue containing
+secrets, tokens, or exploit details. See `docs/security-audit.md` for the
+current audit status.
+
 ## Known Phase 1 notes
 
-- The `(protected)` shell exposes only Phase 1 routes; unfinished features are
-  not linked yet.
 - The local Docker-free backend is a development convenience; migrations and
   application code target the standard hosted Supabase contract.

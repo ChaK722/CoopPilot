@@ -10,6 +10,7 @@ import {
   ListChecks,
   LogOut,
   PlusCircle,
+  Settings,
   UserRound,
 } from "lucide-react";
 import { createBrowserSupabaseClient } from "@/lib/auth/supabase-browser";
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/archive", label: "Archive", icon: Archive },
   { href: "/profile", label: "Profile", icon: UserRound },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function SidebarContent({ email, onNavigate }: { email: string; onNavigate?: () => void }) {
@@ -57,7 +59,7 @@ export function SidebarContent({ email, onNavigate }: { email: string; onNavigat
               className={cn(
                 "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary/10 text-primary"
+                  ? "bg-primary/10 text-foreground"
                   : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >

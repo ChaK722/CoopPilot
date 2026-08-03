@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import { errorResultMessage } from "@/lib/errors";
 import { ConfirmDialog } from "@/features/profile/confirm-dialog";
 import { formatDateTime } from "@/lib/dates";
 import { createInterview, deleteInterview } from "@/features/applications/application-actions";
@@ -55,7 +56,7 @@ export function InterviewSection({
     });
     setBusy(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     toast("Interview added.", "success");
@@ -74,7 +75,7 @@ export function InterviewSection({
     setDeleting(false);
     setPendingDelete(null);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Interview removed.", "success");

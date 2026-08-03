@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify-and-build:
     name: Verify & build (Ubuntu)
@@ -12,10 +19,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -35,3 +42,53 @@ jobs:
           # not secrets; real values come from the deployment environment.
           NEXT_PUBLIC_SUPABASE_URL: http://localhost:54321
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder-anon-key
+
+      - name: Secret scan
+        run: npm run secret:scan
+
+      - name: Production dependency audit policy
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e-and-a11y:
+    name: E2E & accessibility (Ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: verify-and-build
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright (core, alternative, two-user, accessibility)
+        run: npx playwright test
+        env:
+          # The Playwright web servers start their own local tinbase backend
+          # and production Next server; nothing here uses production secrets.
+          CI: "1"
+
+      - name: Run Playwright AI-failure fallback (dev server)
+        run: npx playwright test --config=playwright.ai-failure.config.ts
+        env:
+          CI: "1"
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

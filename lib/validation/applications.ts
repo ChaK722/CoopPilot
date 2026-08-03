@@ -74,7 +74,21 @@ export type CreateApplicationInput = z.input<typeof createApplicationInputSchema
 export const interviewSchema = z.object({
   interview_type: requiredText("Interview type is required."),
   scheduled_at: z.string().datetime("Enter a valid date and time."),
-  location_or_link: optionalText,
+  location_or_link: optionalText.refine(
+    (value) => {
+      if (!value) return true;
+      // Plain room/location text is allowed; anything that looks like a URL
+      // must be http(s). This rejects javascript:, data:, file:, vbscript:.
+      if (!/^[a-z][a-z0-9+.-]*:/i.test(value)) return true;
+      try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Links must start with http:// or https://." },
+  ),
   notes: optionalText,
 });
 

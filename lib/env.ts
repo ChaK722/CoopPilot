@@ -84,15 +84,39 @@ export function assertServerEnv(): {
   supabaseAnonKey: string;
   serviceRoleKey?: string;
   appUrl: string;
+  aiMode: "demo";
 } {
   const publicCheck = validatePublicEnv();
   if (!publicCheck.ok) {
     throw new ConfigError(publicCheck.message ?? "Invalid environment configuration.");
   }
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ?? "http://localhost:3000";
+
+  if (process.env.NODE_ENV === "production") {
+    const isHttps = appUrl.startsWith("https://");
+    const isLoopback = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(appUrl);
+    if (!isHttps && !isLoopback) {
+      throw new ConfigError(
+        "NEXT_PUBLIC_APP_URL must use HTTPS in production (localhost is allowed for local E2E).",
+      );
+    }
+    if (process.env.E2E_AI_FAILURE === "1") {
+      throw new ConfigError("E2E_AI_FAILURE is not allowed in production.");
+    }
+  }
+
+  const aiMode = process.env.AI_MODE ?? "demo";
+  if (aiMode !== "demo") {
+    throw new ConfigError(
+      "AI_MODE must be 'demo' in the MVP; the external provider adapter is not implemented.",
+    );
+  }
+
   return {
     supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL as string,
     supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || undefined,
-    appUrl: process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ?? "http://localhost:3000",
+    appUrl,
+    aiMode,
   };
 }

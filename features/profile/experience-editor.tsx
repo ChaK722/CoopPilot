@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -111,7 +112,7 @@ export function ExperienceEditor({ initial }: { initial: ExperienceRow[] }) {
     setDeleting(false);
     setPendingDelete(null);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast("Experience deleted.", "success");
@@ -121,7 +122,7 @@ export function ExperienceEditor({ initial }: { initial: ExperienceRow[] }) {
   async function move(row: ExperienceRow, direction: "up" | "down") {
     const result = await moveExperience(row.id, direction);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     router.refresh();

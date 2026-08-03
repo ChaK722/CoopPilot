@@ -38,6 +38,16 @@ next-env.d.ts
 
 # local dev server logs
 .next-dev*.log
+.e2e-backend.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/playwright-report-ai-failure/
+/blob-report/
+
+# transient acceptance-run artifacts
+.tmp-*
 
 # editor
 .vscode/

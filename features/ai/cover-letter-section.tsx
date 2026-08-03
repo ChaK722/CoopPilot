@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { Check, Copy, RefreshCw, Save, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,7 +49,7 @@ export function CoverLetterSection({
     const result = await generateCoverLetter(applicationId, crypto.randomUUID());
     setGenerating(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     toast("Cover letter generated.", "success");
@@ -61,7 +62,7 @@ export function CoverLetterSection({
     const result = await saveCoverLetterEdit(applicationId, { content });
     setSaving(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     toast("Cover letter saved as a new version.", "success");
@@ -82,7 +83,7 @@ export function CoverLetterSection({
   async function handleRestore(version: number) {
     const result = await restoreCoverLetterVersion(applicationId, version);
     if (!result.ok) {
-      toast(result.error, "error");
+      toast(errorResultMessage(result), "error");
       return;
     }
     toast(`Restored version ${version}.`, "success");

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
@@ -48,7 +49,7 @@ export function SkillsEditor({ initial }: { initial: SkillRow[] }) {
     const result = await replaceSkills(skills);
     setSaving(false);
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
     toast("Skills saved.", "success");

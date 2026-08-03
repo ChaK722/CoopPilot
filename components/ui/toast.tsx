@@ -43,6 +43,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div
+        role="status"
         aria-live="polite"
         aria-label="Notifications"
         className="pointer-events-none fixed bottom-4 left-1/2 z-50 flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4"
@@ -57,7 +58,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   const icons = {
-    success: <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />,
+    success: (
+      <CheckCircle2 className="h-4 w-4 text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+    ),
     error: <AlertTriangle className="h-4 w-4 text-destructive" aria-hidden="true" />,
     info: <Info className="h-4 w-4 text-primary" aria-hidden="true" />,
   };

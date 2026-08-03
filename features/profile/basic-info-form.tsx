@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { errorResultMessage } from "@/lib/errors";
 import { CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,7 +80,7 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
     setSaving(false);
 
     if (!result.ok) {
-      setError(result.error);
+      setError(errorResultMessage(result));
       return;
     }
 
@@ -230,7 +231,7 @@ export function BasicInfoForm({ initial, mode }: BasicInfoFormProps) {
           {saving ? "Saving…" : mode === "onboarding" ? "Finish onboarding" : "Save profile"}
         </Button>
         {mode === "onboarding" && initial?.onboarding_completed_at ? (
-          <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600">
+          <span className="inline-flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
             Onboarding already complete
           </span>

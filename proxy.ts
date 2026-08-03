@@ -4,6 +4,26 @@ import { createServerClient } from "@supabase/ssr";
 const PUBLIC_PATHS = ["/", "/signup", "/login"];
 const AUTH_PATHS = ["/signup", "/login"];
 
+function withSecurityHeaders(response: NextResponse): NextResponse {
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.headers.set(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  );
+  response.headers.set("X-Frame-Options", "DENY");
+  // HSTS only over real HTTPS production; local http:// hosts must stay
+  // browsable during development and E2E.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+  if (appUrl.startsWith("https://")) {
+    response.headers.set(
+      "Strict-Transport-Security",
+      "max-age=63072000; includeSubDomains; preload",
+    );
+  }
+  return response;
+}
+
 /**
  * Session refresh + early redirect. This is NOT the authorization boundary:
  * protected pages verify the server session themselves.
@@ -18,7 +38,7 @@ export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  let response = NextResponse.next({ request });
+  let response = withSecurityHeaders(NextResponse.next({ request }));
 
   if (!supabaseUrl || !anonKey) {
     return response;
@@ -51,14 +71,14 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    return withSecurityHeaders(NextResponse.redirect(url));
   }
 
   if (user && isAuthPage) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     url.searchParams.delete("next");
-    return NextResponse.redirect(url);
+    return withSecurityHeaders(NextResponse.redirect(url));
   }
 
   return response;
