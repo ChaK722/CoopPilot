@@ -39,6 +39,7 @@ next-env.d.ts
 # local dev server logs
 .next-dev*.log
 .e2e-backend.json
+.e2e-backend-failure.json
 
 # Playwright
 /test-results/
