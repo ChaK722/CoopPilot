@@ -40,7 +40,7 @@ test("core workflow works with the keyboard only", async ({ page, consoleErrors 
   await page.waitForURL(/\/dashboard/);
 
   // Keyboard navigation to Add Job.
-  await tabUntil(page, page.getByRole("link", { name: "Add Job" }));
+  await tabUntil(page, page.getByLabel("Main navigation").getByRole("link", { name: "Add Job" }));
   await page.keyboard.press("Enter");
   await page.waitForURL(/\/applications\/new/);
   await tabUntil(page, page.getByPlaceholder(/Paste the full job posting text/));
