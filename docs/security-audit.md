@@ -92,11 +92,21 @@ be enabled without breaking the product.
 - Remaining `npm outdated` entries are major-version jumps (eslint 10,
   tailwindcss 4, typescript 7) and are intentionally not taken in this
   phase.
-- Install scripts are required for: `sharp` (native image processing used by
-  Next), `@embedded-postgres/*` (native PostgreSQL binaries for the RLS test
-  suites), `unrs-resolver` (Rust resolver used by the Next toolchain), and
-  `fsevents` (macOS-only optional watcher). No wildcard script approval is
-  used.
+- Install-script approvals are recorded in the `allowScripts` field of
+  `package.json` (npm's project-level approval mechanism; npm 11.16+ honors
+  the field, older npm ignores it and keeps running scripts as before). The
+  allowlist is scoped to exactly the packages whose native postinstall steps
+  are genuinely required on supported build targets:
+  - `esbuild` — platform binary bootstrap used by Vite/Vitest.
+  - `sharp` — native image processing used by Next.
+  - `unrs-resolver` — Rust resolver used by the Next toolchain.
+  - `@embedded-postgres/linux-x64` — native PostgreSQL binaries for RLS and
+    E2E suites on the Ubuntu CI runner.
+  - `@embedded-postgres/windows-x64` — native PostgreSQL binaries for RLS
+    and E2E suites on the Windows local environment.
+  - `fsevents` (macOS-only optional watcher) is deliberately **not**
+    approved: no supported build target runs macOS, and no wildcard script
+    approval is used.
 
 ## Known deferred items
 

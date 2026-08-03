@@ -307,7 +307,10 @@ for (const [name, version] of Object.entries(SHARP_LIBVIPS_VERSIONS)) {
 }
 
 // 3. Ensure the top-level and playwright-nested fsevents entries exist.
-if (packages["node_modules/fsevents"] === undefined && oldLock.packages?.["node_modules/fsevents"]) {
+if (
+  packages["node_modules/fsevents"] === undefined &&
+  oldLock.packages?.["node_modules/fsevents"]
+) {
   packages["node_modules/fsevents"] = { ...oldLock.packages["node_modules/fsevents"] };
   added += 1;
 }
