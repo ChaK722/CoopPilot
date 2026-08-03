@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest-clean.mjs",
     "test:watch": "vitest",
     "secret:scan": "node scripts/secret-scan.mjs",
     "predeploy:check": "node scripts/predeploy-check.mjs",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/components/ui/toast";
 
@@ -97,9 +97,21 @@ describe("ReviewForm", () => {
     renderForm();
 
     await user.click(screen.getByRole("button", { name: "Save application" }));
-    await user.click(screen.getByRole("button", { name: /Saving/ })).catch(() => undefined);
-    resolveSave!({ ok: true, applicationId: "app-new" });
 
+    // The submit control is disabled while the save is in flight, so a
+    // second user action (Enter) cannot double-submit.
+    const savingButton = screen.getByRole("button", { name: /Saving/ });
+    expect(savingButton).toBeDisabled();
+    await user.keyboard("{Enter}");
+    expect(createApplication).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSave!({ ok: true, applicationId: "app-new" });
+    });
+
+    // The success toast renders and the button returns to a ready state.
+    expect(await screen.findByText("Application saved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save application" })).toBeEnabled();
     expect(createApplication).toHaveBeenCalledTimes(1);
   });
 });

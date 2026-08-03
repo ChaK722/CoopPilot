@@ -16,7 +16,11 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   timeout: 120_000,
-  reporter: [["list"], ["html", { open: "never" }]],
+  reporter: [
+    ["list"],
+    ["html", { open: "never" }],
+    ["json", { outputFile: "test-results/playwright-results.json" }],
+  ],
   webServer: [
     {
       command: `node scripts/e2e/start-backend.mjs --port ${BACKEND_PORT} --out .e2e-backend.json`,

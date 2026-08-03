@@ -121,20 +121,61 @@ test.describe("Phase 7 alternative paths", () => {
     const email = uniqueEmail("dupe");
     const password = uniquePassword();
     await signUp(page, email, password, "Dupe User");
+    const backend = backendConfig();
+    const api = await apiLogin(backend, email, password);
+
     await page.goto("/applications/new");
     await page
       .getByPlaceholder(/Paste the full job posting text/)
       .fill("Duplicate click job description.");
-    await Promise.all([
-      page.getByRole("button", { name: "Analyze" }).click(),
-      page
-        .getByRole("button", { name: "Analyze" })
-        .click()
-        .catch(() => undefined),
-    ]);
-    await page.getByRole("button", { name: "Save application" }).waitFor({ timeout: 60_000 });
-    await page.getByRole("button", { name: "Save application" }).click();
+
+    // One real first click starts the single analysis.
+    const analyzeButton = page.getByRole("button", { name: "Analyze", exact: true });
+    await analyzeButton.click();
+
+    // The control is disabled for the whole analysis, so a fast second user
+    // action (Enter) cannot start another submission.
+    const analyzingButton = page.getByRole("button", { name: /Analyzing/ });
+    await expect(analyzingButton).toBeDisabled();
+    await page.keyboard.press("Enter");
+    await expect(analyzingButton).toBeDisabled();
+
+    // Exactly one review form appears once the single analysis completes.
+    const saveButton = page.getByRole("button", { name: "Save application", exact: true });
+    await expect(saveButton).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Save application" })).toHaveCount(1);
+
+    // Server-side: exactly one AI run was created for the analysis.
+    const runsResponse = await fetch(
+      `${backend.url}/rest/v1/ai_runs?select=id&user_id=eq.${api.userId}`,
+      {
+        headers: {
+          apikey: backend.serviceRoleKey,
+          Authorization: `Bearer ${backend.serviceRoleKey}`,
+        },
+      },
+    );
+    expect(runsResponse.ok).toBe(true);
+    const runs = await runsResponse.json();
+    expect(runs).toHaveLength(1);
+
+    await saveButton.click();
     await page.waitForURL(/\/applications\/[0-9a-f-]{36}$/);
+
+    // Server-side: exactly one application exists for the user.
+    const appsResponse = await fetch(
+      `${backend.url}/rest/v1/applications?select=id&user_id=eq.${api.userId}`,
+      {
+        headers: {
+          apikey: backend.serviceRoleKey,
+          Authorization: `Bearer ${backend.serviceRoleKey}`,
+        },
+      },
+    );
+    expect(appsResponse.ok).toBe(true);
+    const apps = await appsResponse.json();
+    expect(apps).toHaveLength(1);
+
     await page.goto("/dashboard");
     await expect(
       page.locator("div.rounded-lg", { hasText: "Total applications" }).getByText("1"),

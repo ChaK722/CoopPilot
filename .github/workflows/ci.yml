@@ -78,10 +78,16 @@ jobs:
           # and production Next server; nothing here uses production secrets.
           CI: "1"
 
+      - name: Check Playwright clean results (no flaky/retry)
+        run: node scripts/check-playwright-results.mjs test-results/playwright-results.json
+
       - name: Run Playwright AI-failure fallback (dev server)
         run: npx playwright test --config=playwright.ai-failure.config.ts
         env:
           CI: "1"
+
+      - name: Check AI-failure Playwright clean results (no flaky/retry)
+        run: node scripts/check-playwright-results.mjs test-results/playwright-ai-failure-results.json
 
       - name: Upload Playwright report on failure
         if: failure()

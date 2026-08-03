@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ToastProvider } from "@/components/ui/toast";
 
@@ -99,12 +99,24 @@ describe("AddJobFlow", () => {
 
     await user.type(screen.getByLabelText("Job description"), "A real job posting.");
     await user.click(screen.getByRole("button", { name: "Analyze" }));
-    await user.click(screen.getByRole("button", { name: /Analyzing/ })).catch(() => undefined);
 
-    resolveAnalysis!({
-      ok: false,
-      error: "failure",
+    // The submit control is disabled for the whole analysis, so a second
+    // user action (Enter) cannot start another submission.
+    const analyzingButton = screen.getByRole("button", { name: /Analyzing/ });
+    expect(analyzingButton).toBeDisabled();
+    await user.keyboard("{Enter}");
+    expect(analyzeJob).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveAnalysis!({
+        ok: false,
+        error: "failure",
+      });
     });
+
+    // The failure is surfaced and the flow returns to a recoverable state.
+    expect(await screen.findByRole("alert")).toHaveTextContent("failure");
+    expect(screen.getByRole("button", { name: "Analyze" })).toBeEnabled();
     expect(analyzeJob).toHaveBeenCalledTimes(1);
   });
 });
